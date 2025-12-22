@@ -1,1 +1,1 @@
-# Constructing Grounded Conceptual Representations <br>via Object-Centric Robotic Active Vision
+# Constructing Grounded Conceptual Representations via Object-Centric Robotic Active Vision
