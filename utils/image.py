@@ -1,9 +1,20 @@
+"""
+Image manipulation utilities
+"""
+
 import cv2
 import numpy as np
 from ultralytics.data.augment import LetterBox
 
 
 def crop_zeros(src: np.ndarray) -> np.ndarray:
+    """
+    Crop zeros around the center
+
+    :param src: An input image
+    :return: Cropped image
+    """
+
     if src.ndim < 2:
         raise ValueError
 
@@ -17,12 +28,20 @@ def crop_zeros(src: np.ndarray) -> np.ndarray:
     ]
 
 
-def resize_img(src: np.ndarray, size: tuple[int, ...]) -> np.ndarray:
+def resize_img(src: np.ndarray, to_shape: tuple[int, ...]) -> np.ndarray:
+    """
+    Resize an image without padding or cropping
+
+    :param src: An input image
+    :param to_shape: New shape
+    :return: Stretched image
+    """
+
     if src.ndim < 2:
         raise ValueError
 
     return LetterBox(
-        new_shape=size,
+        new_shape=to_shape,
         scale_fill=True,
         scaleup=True
     )(image=src)
