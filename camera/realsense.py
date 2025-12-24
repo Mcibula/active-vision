@@ -54,7 +54,7 @@ class Stream:
         image = np.asanyarray(frame.get_data())
 
         if image.ndim == 2:
-            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
         if image.ndim == 3:
             return image
