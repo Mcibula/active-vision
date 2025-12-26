@@ -105,8 +105,8 @@ def is_duplicate(
     hsv1 = cv2.split(cv2.cvtColor(img1, cv2.COLOR_RGB2HSV))
     hsv2 = cv2.split(cv2.cvtColor(img2, cv2.COLOR_RGB2HSV))
 
-    y1, x1 = img1.shape
-    y2, x2 = img2.shape
+    y1, x1, _ = img1.shape
+    y2, x2, _ = img2.shape
     new_shape = (max(y1, y2), max(x1, x2))
 
     d_hsv = sum(
