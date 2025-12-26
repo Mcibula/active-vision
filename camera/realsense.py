@@ -167,7 +167,7 @@ class RealsenseCamera:
             self.start_streaming()
 
         while True:
-            composite = self.pipeline.wait_for_frames()
+            composite = self.pipeline.wait_for_frames(timeout_ms=1000)
 
             if self.streams.any(composite):
                 break
