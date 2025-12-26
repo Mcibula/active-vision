@@ -101,6 +101,12 @@ class Streams(MutableMapping):
             for stream in self._streams.values()
         )
 
+    def values(self) -> list[Stream]:
+        return list(self._streams.values())
+
+    def keys(self) -> list[str]:
+        return list(self._streams.keys())
+
 
 class RealsenseCamera:
     def __init__(self, streams: Streams) -> None:
@@ -180,6 +186,15 @@ class RealsenseCamera:
             frames.append(stream.to_numpy(composite))
 
         return frames
+
+    def warmup(self) -> None:
+        if not self.streaming:
+            self.start_streaming()
+
+        stream = self.streams.keys()[0]
+
+        for _ in range(2 * self.streams[stream].fps):
+            self.get_frame([stream])
 
 
 if __name__ == '__main__':
