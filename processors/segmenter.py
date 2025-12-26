@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator
 
+import cv2
 import numpy as np
 from PIL.Image import Image
 from ultralytics import SAM, YOLO, YOLOE
@@ -34,6 +35,8 @@ class Segmenter:
 
         self.tracking = engine != 'sam'
         self.model: Model = self.engines[engine](weights)
+
+        self._results: list[Results] = []
 
     @property
     def engine_type(self) -> str:
@@ -74,6 +77,7 @@ class Segmenter:
             raise NotImplementedError
 
         results: list[Results] = self.model.track(
+        self._results: list[Results] = self.model.track(
             src,
             stream=stream,
             persist=persist,
@@ -105,3 +109,29 @@ class Segmenter:
                 record.snapshots.append(self._segment_object(src, masks[idx]))
 
         return objects
+
+    def last_annotated_frames(
+            self,
+            conf: bool = False,
+            labels: bool = False,
+            boxes: bool = False,
+            masks: bool = True,
+            probs: bool = False
+    ) -> list[np.ndarray]:
+        return [
+            cv2.cvtColor(
+                r.plot(
+                    conf=conf,
+                    labels=labels,
+                    boxes=boxes,
+                    masks=masks,
+                    probs=probs,
+                    show=False,
+                    pil=False,
+                    color_mode='instance'
+                ),
+                cv2.COLOR_BGR2RGB
+            )
+            for r in self._results
+        ]
+
