@@ -67,25 +67,22 @@ class Segmenter:
 
         return crop_zeros(masked_img)
 
-    def track(
-            self,
-            src: np.ndarray,
-            persist: bool = True,
-            stream: bool = False
-    ) -> dict[int, TrackRecord]:
+    def track(self, src: np.ndarray | list[np.ndarray]) -> dict[int, TrackRecord]:
         if self.engine_type == 'sam':
             raise NotImplementedError
 
-        results: list[Results] = self.model.track(
+        if not isinstance(src, list):
+            src = [src]
+
         self._results: list[Results] = self.model.track(
             src,
-            stream=stream,
-            persist=persist,
+            stream=False,
+            persist=True,
             verbose=False
         )
 
         objects: dict[int, TrackRecord] = {}
-        for r in results:
+        for r, src_img in zip(self._results, src):
             obj_ids: list[float] = r.boxes.id.cpu().tolist()
             xyxy: np.ndarray = r.boxes.xyxy.cpu().numpy()
             masks: np.ndarray = r.masks.data.cpu().numpy()
@@ -103,10 +100,10 @@ class Segmenter:
                 record: TrackRecord = objects[obj_id]
                 record.xyxy.append(xyxy[idx])
 
-                cropped_mask = crop_zeros(resize_img(masks[idx], src.shape))
+                cropped_mask = crop_zeros(resize_img(masks[idx], src_img.shape))
                 record.masks.append(cropped_mask)
 
-                record.snapshots.append(self._segment_object(src, masks[idx]))
+                record.snapshots.append(self._segment_object(src_img, masks[idx]))
 
         return objects
 

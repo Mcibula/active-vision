@@ -76,14 +76,13 @@ class Scene:
     def num_objects(self) -> int:
         return len(self.objects)
 
-    def read_frame(self, frame: np.ndarray) -> None:
-        self.frame_count += 1
+    def read_frames(self, frames: np.ndarray | list[np.ndarray]) -> None:
+        if not isinstance(frames, list):
+            frames = [frames]
 
-        record: dict[int, TrackRecord] = self.segmenter.track(
-            src=frame,
-            persist=True,
-            stream=False
-        )
+        self.frame_count += len(frames)
+
+        record: dict[int, TrackRecord] = self.segmenter.track(frames)
 
         for obj_id, obj_record in record.items():
             if obj_id not in self.objects:
