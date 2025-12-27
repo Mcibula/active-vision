@@ -3,11 +3,14 @@ from typing import TYPE_CHECKING, Iterator
 
 import cv2
 import numpy as np
+import torch
 from PIL.Image import Image
+from torch import Tensor
 from ultralytics import SAM, YOLO, YOLOE
 from ultralytics.engine.results import Results
+from ultralytics.utils.checks import check_imgsz
 
-from utils.image import crop_zeros, resize_img
+from utils.image import crop_zeros, resize_imgs
 
 if TYPE_CHECKING:
     from ultralytics.engine.model import Model
@@ -35,12 +38,17 @@ class Segmenter:
 
         self.tracking = engine != 'sam'
         self.model: Model = self.engines[engine](weights)
+        self.device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self._results: list[Results] = []
 
     @property
     def engine_type(self) -> str:
         return self.model.__class__.__name__.lower()
+
+    @property
+    def gpu(self) -> bool:
+        return self.device == 'cuda'
 
     def segment_all(
             self,
@@ -52,40 +60,73 @@ class Segmenter:
 
         return self.model(src, stream=stream, verbose=False)
 
-    @staticmethod
-    def _segment_object(src: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        if (
-                src.ndim < 2
-                or mask.ndim != 2
-                or mask.dtype != np.uint8
-                or mask.min() != 0 or mask.max() != 1
-        ):
-            raise ValueError
-
-        upscaled_mask = resize_img(mask, src.shape)
-        masked_img = src * upscaled_mask
-
-        return crop_zeros(masked_img)
-
     def track(self, src: np.ndarray | list[np.ndarray]) -> dict[int, TrackRecord]:
         if self.engine_type == 'sam':
             raise NotImplementedError
 
         if not isinstance(src, list):
-            src = [src]
+            src: list[np.ndarray] = [src]
 
-        self._results: list[Results] = self.model.track(
-            src,
-            stream=False,
-            persist=True,
-            verbose=False
-        )
+        frame_h, frame_w, frame_c = src[0].shape
+        print(f'Num samples: {len(src)}')
+
+        with torch.no_grad():
+            try:
+                # Convert uint8 RGB NHWC to float32 RGB NCHW
+                frames: Tensor = (
+                        torch.from_numpy(np.asarray(src))
+                             .permute(0, 3, 1, 2)
+                             .float()
+                             .to(self.device) / 255
+                )
+            except ValueError as e:
+                raise ValueError('All the source frames must have the same shape.') from e
+
+            correct_h, correct_w = check_imgsz(
+                imgsz=[frame_h, frame_w],
+                stride=32
+            )
+            model_in = (
+                frames
+                if correct_h == frame_h and correct_w == frame_w
+                else resize_imgs(
+                    src=frames,
+                    to_shape=(correct_h, correct_w),
+                    dim_order='nchw',
+                    stretch=False,
+                    padding_value=0
+                )
+            )
+
+            self._results: list[Results] = self.model.track(
+                model_in,
+                stream=False,
+                persist=True,
+                verbose=False
+            )
 
         objects: dict[int, TrackRecord] = {}
-        for r, src_img in zip(self._results, src):
+        for frame_idx, r in enumerate(self._results):
             obj_ids: list[float] = r.boxes.id.cpu().tolist()
+            n_objs: int = len(obj_ids)
+
             xyxy: np.ndarray = r.boxes.xyxy.cpu().numpy()
-            masks: np.ndarray = r.masks.data.cpu().numpy()
+
+            if n_objs == 0:
+                continue
+
+            # CHW frame, O1HW masks
+            frame: Tensor = frames[frame_idx]
+            upscaled_masks: Tensor = resize_imgs(
+                src=r.masks.data.unsqueeze(1),
+                to_shape=(frame_h, frame_w),
+                dim_order='nchw',
+                stretch=True
+            )
+
+            # OCHW masked frames, OHW masks
+            masked_frames: Tensor = upscaled_masks * frame.expand(n_objs, -1, -1, -1)
+            upscaled_masks: Tensor = upscaled_masks.squeeze(1)
 
             for idx, obj_id in enumerate(obj_ids):
                 obj_id: int = int(obj_id)
@@ -100,10 +141,16 @@ class Segmenter:
                 record: TrackRecord = objects[obj_id]
                 record.xyxy.append(xyxy[idx])
 
-                cropped_mask = crop_zeros(resize_img(masks[idx], src_img.shape))
-                record.masks.append(cropped_mask)
+                # HW mask, HWC snapshot
+                cropped_mask = crop_zeros(upscaled_masks[idx])
+                cropped_snapshot = crop_zeros(masked_frames[idx].permute(1, 2, 0))
 
-                record.snapshots.append(self._segment_object(src_img, masks[idx]))
+                # Blank frame or blank mask
+                if cropped_snapshot is None or cropped_mask is None:
+                    continue
+
+                record.masks.append(cropped_mask.cpu().numpy().astype(np.uint8))
+                record.snapshots.append(cropped_snapshot.cpu().numpy().astype(np.uint8))
 
         return objects
 
@@ -131,4 +178,3 @@ class Segmenter:
             )
             for r in self._results
         ]
-
