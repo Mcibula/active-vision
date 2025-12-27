@@ -85,6 +85,9 @@ class Scene:
         record: dict[int, TrackRecord] = self.segmenter.track(frames)
 
         for obj_id, obj_record in record.items():
+            if not obj_record.snapshots:
+                continue
+
             if obj_id not in self.objects:
                 self.objects[obj_id] = RigidObject(obj_id)
 
