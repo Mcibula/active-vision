@@ -162,23 +162,25 @@ class RealsenseCamera:
         self.pipeline.stop()
         self.streaming = False
 
-    def get_composite_frame(self) -> rs.composite_frame:
+    def get_composite_frame(self) -> rs.composite_frame | None:
         if not self.streaming:
             self.start_streaming()
 
-        while True:
-            composite = self.pipeline.wait_for_frames(timeout_ms=1000)
+        success, composite = self.pipeline.try_wait_for_frames(timeout_ms=0)
 
-            if self.streams.any(composite):
-                break
+        if success:
+            return composite
 
-        return composite
+        return None
 
-    def get_frame(self, stream_names: list[str]) -> list[np.ndarray]:
+    def get_frame(self, stream_names: list[str]) -> list[np.ndarray] | None:
         if not stream_names or not set(self.streams).issuperset(set(stream_names)):
             raise ValueError
 
         composite = self.get_composite_frame()
+        if composite is None:
+            return None
+
         frames = []
 
         for stream_name in stream_names:
