@@ -53,3 +53,33 @@ class FPSAnnotator:
             color=(0, 0, 0),
             thickness=2
         )
+
+
+class Color(tuple):
+    def __new__(cls, r: int, g: int, b: int) -> 'Color':
+        return super().__new__(cls, (r, g, b))
+
+    @property
+    def rgb(self) -> tuple[int, int, int]:
+        return self
+
+    @property
+    def bgr(self) -> tuple[int, int, int]:
+        return self[::-1]
+
+    def __add__(self, other: 'Color') -> 'Color':
+        return Color(
+            r=min(self[0] + other[0], 255),
+            g=min(self[1] + other[1], 255),
+            b=min(self[2] + other[2], 255)
+        )
+
+
+BLACK = Color(0, 0, 0)
+RED = Color(255, 0, 0)
+GREEN = Color(0, 255, 0)
+BLUE = Color(0, 0, 255)
+YELLOW = GREEN + RED
+CYAN = GREEN + BLUE
+WHITE = RED + GREEN + BLUE
+
