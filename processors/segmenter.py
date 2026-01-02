@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator
 
@@ -14,6 +15,8 @@ from utils.image import crop_zeros, resize_imgs
 
 if TYPE_CHECKING:
     from ultralytics.engine.model import Model
+
+logging.getLogger('ultralytics').setLevel(logging.ERROR)
 
 
 @dataclass
@@ -68,7 +71,6 @@ class Segmenter:
             src: list[np.ndarray] = [src]
 
         frame_h, frame_w, frame_c = src[0].shape
-        print(f'Num samples: {len(src)}')
 
         with torch.no_grad():
             try:
