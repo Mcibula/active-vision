@@ -1,3 +1,4 @@
+import time
 from collections.abc import MutableMapping
 from typing import Callable, Iterator
 
@@ -189,13 +190,14 @@ class RealsenseCamera:
 
         return frames
 
-    def warmup(self) -> None:
+    def warmup(self, t: float = 2.0) -> None:
         if not self.streaming:
             self.start_streaming()
 
         stream = self.streams.keys()[0]
+        t0 = time.time()
 
-        for _ in range(2 * self.streams[stream].fps):
+        while time.time() - t0 < t:
             self.get_frame([stream])
 
 
