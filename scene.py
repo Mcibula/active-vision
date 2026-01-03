@@ -1,3 +1,4 @@
+import joblib
 import numpy as np
 import torch
 
@@ -18,6 +19,12 @@ class RigidObject:
 
         self._masks: list[np.ndarray] = []
         self._snapshots: list[np.ndarray] = []
+
+    def __repr__(self) -> str:
+        return (
+            f'<RigidObject #{self.obj_id} '
+            f'with {self.num_snapshots} snapshot{"s" if self.num_snapshots > 1 else ''}>'
+        )
 
     @property
     def pose_6d(self) -> tuple[float, float, float, float, float, float]:
@@ -57,17 +64,20 @@ class RigidObject:
             self._masks.append(masks[0])
 
         for snapshot, mask in zip(snapshots[1:], masks[1:]):
-            if is_duplicate(snapshot, self._snapshots[-1], thresh=27.0):
+            if is_duplicate(snapshot, self._snapshots[-1], thresh=10.0):
                 continue
 
             self._snapshots.append(snapshot)
             self._masks.append(mask)
 
+    def show_snapshots(self):
+        ...
+
 
 class Scene:
     def __init__(self, segmenter: Segmenter) -> None:
         self.device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.segmenter = segmenter
+        self.segmenter: Segmenter | None = segmenter
 
         self.frame_count: int = 0
         self.objects: dict[int, RigidObject] = {}
@@ -77,6 +87,9 @@ class Scene:
         return len(self.objects)
 
     def read_frames(self, frames: np.ndarray | list[np.ndarray]) -> None:
+        if self.segmenter is None:
+            raise RuntimeError
+
         if not isinstance(frames, list):
             frames = [frames]
 
@@ -96,3 +109,30 @@ class Scene:
                 snapshots=obj_record.snapshots,
                 masks=obj_record.masks
             )
+
+    def save(self, path: str, store_models: bool = False) -> None:
+        store: dict[str, ...] = {
+            'device': self.device,
+            'segmenter': self.segmenter if store_models else None,
+            'frame_count': self.frame_count,
+            'objects': self.objects
+        }
+
+        joblib.dump(
+            value=store,
+            filename=path,
+            compress=True
+        )
+
+    @classmethod
+    def load(cls, path: str) -> 'Scene':
+        store: dict[str, ...] = joblib.load(path)
+        scene: Scene = cls.__new__(cls)
+
+        scene.device = store['device']
+        scene.segmenter = store['segmenter']
+        scene.frame_count = store['frame_count']
+        scene.objects = store['objects']
+
+        return scene
+
