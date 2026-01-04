@@ -1,6 +1,6 @@
 import time
 from collections.abc import MutableMapping
-from typing import Callable, Iterator
+from typing import Callable, Iterable, Iterator
 
 import cv2
 import matplotlib.pyplot as plt
@@ -110,7 +110,16 @@ class Streams(MutableMapping):
 
 
 class RealsenseCamera:
-    def __init__(self, streams: Streams) -> None:
+    def __init__(self, streams: Streams | Iterable[Stream] | Stream) -> None:
+        if isinstance(streams, Iterable):
+            if len(streams) == 0:
+                raise ValueError
+
+            streams = Streams(list(streams))
+
+        elif isinstance(streams, Stream):
+            streams = Streams([streams])
+
         self.streams: Streams = streams
         self._devices: rs.device_list = rs.context().query_devices()
 
