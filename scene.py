@@ -3,7 +3,7 @@ import numpy as np
 import torch
 
 from processors.segmenter import Segmenter, TrackRecord
-from utils.image import is_duplicate
+from utils.image import mse
 
 
 class RigidObject:
@@ -19,6 +19,8 @@ class RigidObject:
 
         self._masks: list[np.ndarray] = []
         self._snapshots: list[np.ndarray] = []
+
+        self.duplicate_thresh: float = 600.0
 
     def __repr__(self) -> str:
         return (
@@ -64,7 +66,8 @@ class RigidObject:
             self._masks.append(masks[0])
 
         for snapshot, mask in zip(snapshots[1:], masks[1:]):
-            if is_duplicate(snapshot, self._snapshots[-1], thresh=10.0):
+            # Skip possible duplicate
+            if mse(snapshot, self._snapshots[-1]) < self.duplicate_thresh:
                 continue
 
             self._snapshots.append(snapshot)

@@ -1,9 +1,9 @@
 """
 Image manipulation utilities
 """
+
 from typing import Literal
 
-import cv2
 import numpy as np
 import torch
 import torchvision.transforms.v2.functional as tvf
@@ -176,58 +176,34 @@ def pad_img(src: np.ndarray, to_shape: tuple[int, int], value: int = 0) -> np.nd
     )
 
 
-def is_duplicate(
-        img1: np.ndarray,
-        img2: np.ndarray,
-        thresh: float = 27.0
-) -> bool:
+def mse(img1: np.ndarray, img2: np.ndarray) -> float:
     """
-    Detect if two images are approximately identical by calculating
-    the average difference across HSV channels between the images.
-    A simplified version of the PySceneDetect's Content-Aware Detector
+    Calculate mean squared error between two images.
+    Both input images must have the CHW dimension order and the same number of channels.
+    If the images do not match in size, they will be padded with zeros to larger size
+    along each dimension
 
-    :param img1: An input image
-    :param img2: An input image
-    :param thresh:
-    :return:
+    :param img1: A single- or multi-channel image with the CHW dimension order
+    :param img2: A single- or multi-channel image with the CHW dimension order
+                 and the same number of channels as `img1`
+    :return: Mean squared error
     """
 
-    if img1.ndim != 3 or img2.ndim != 3:
+    if img1.ndim != img2.ndim or img1.ndim not in (2, 3):
         raise ValueError
 
-    hsv1 = cv2.split(cv2.cvtColor(img1, cv2.COLOR_RGB2HSV))
-    hsv2 = cv2.split(cv2.cvtColor(img2, cv2.COLOR_RGB2HSV))
+    *c1, h1, w1 = img1.shape
+    *c2, h2, w2 = img2.shape
 
-    y1, x1, _ = img1.shape
-    y2, x2, _ = img2.shape
-    new_shape = (max(y1, y2), max(x1, x2))
+    if c1 != c2:
+        raise ValueError
 
-    d_hsv = sum(
-        mpd(
-            img1=pad_img(mat1, new_shape),
-            img2=pad_img(mat2, new_shape)
-        )
-        for mat1, mat2 in zip(hsv1, hsv2)
+    if (h1, w1) != (h2, w2):
+        new_shape = (max(h1, h2), max(w1, w2))
+        img1 = pad_img(img1, new_shape)
+        img2 = pad_img(img2, new_shape)
+
+    return np.mean(
+        (img1.astype(np.float32) - img2.astype(np.float32)) ** 2,
+        dtype=np.float32
     )
-
-    similarity = d_hsv / 3
-    return similarity >= thresh
-
-
-def mpd(img1: np.ndarray, img2: np.ndarray) -> float:
-    """
-    Calculate mean pixel distance between two images
-
-    :param img1: A single-channel image
-    :param img2: A single-channel image of the same shape as `img1`
-    :return: Mean pixel distance
-    """
-
-    if (
-            img1.ndim != 2 or img2.ndim != 2
-            or img1.shape != img2.shape
-    ):
-        raise ValueError
-
-    diff = np.abs(img1.astype(np.int32) - img2.astype(np.int32))
-    return np.sum(diff) / img1.size
