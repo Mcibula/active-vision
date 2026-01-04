@@ -67,7 +67,10 @@ class RigidObject:
 
         for snapshot, mask in zip(snapshots[1:], masks[1:]):
             # Skip possible duplicate
-            if mse(snapshot, self._snapshots[-1]) < self.duplicate_thresh:
+            if mse(
+                    snapshot.transpose(2, 0, 1),
+                    self._snapshots[-1].transpose(2, 0, 1)
+            ) < self.duplicate_thresh:
                 continue
 
             self._snapshots.append(snapshot)
