@@ -28,6 +28,9 @@ class RigidObject:
             f'with {self.num_snapshots} snapshot{"s" if self.num_snapshots > 1 else ''}>'
         )
 
+    def __getitem__(self, snapshot_id: int) -> tuple[np.ndarray, np.ndarray]:
+        return self._snapshots[snapshot_id], self._masks[snapshot_id]
+
     @property
     def pose_6d(self) -> tuple[float, float, float, float, float, float]:
         return self.x, self.y, self.z, self.rx, self.ry, self.rz
@@ -88,6 +91,18 @@ class Scene:
         self.frame_count: int = 0
         self.objects: dict[int, RigidObject] = {}
 
+    def __repr__(self) -> str:
+        return f'<Scene with {self.num_objects} objects>'
+
+    def __getitem__(self, obj_id: int | tuple[int, int]) -> RigidObject | tuple[np.ndarray, np.ndarray]:
+        if isinstance(obj_id, int):
+            return self.objects[obj_id]
+
+        if isinstance(obj_id, tuple):
+            return self.objects[obj_id[0]][obj_id[1]]
+
+        raise TypeError
+
     @property
     def num_objects(self) -> int:
         return len(self.objects)
@@ -141,4 +156,3 @@ class Scene:
         scene.objects = store['objects']
 
         return scene
-
