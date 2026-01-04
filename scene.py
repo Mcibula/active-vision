@@ -1,4 +1,7 @@
+import random
+
 import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -79,8 +82,45 @@ class RigidObject:
             self._snapshots.append(snapshot)
             self._masks.append(mask)
 
-    def show_snapshots(self):
-        ...
+    def show_snapshots(self, n: int = 1, ids: list[int] | None = None) -> None:
+        if ids is not None:
+            if not ids or any(i >= self.num_snapshots for i in ids):
+                raise ValueError
+
+            n = len(ids)
+            sel_ids = ids
+        else:
+            if n <= 0:
+                raise ValueError
+
+            n = min(n, self.num_snapshots)
+            sel_ids = random.sample(range(self.num_snapshots), n)
+
+        n_cols = int(np.ceil(np.sqrt(n)))
+        n_rows = int(np.ceil(n / n_cols))
+
+        fig, axs = plt.subplots(
+            nrows=n_rows, ncols=n_cols,
+            figsize=(15, 20 * n_rows / n_cols),
+            squeeze=False
+        )
+
+        for i in range(n_rows):
+            for j in range(n_cols):
+                ax = axs[i, j]
+                ax.axis('off')
+
+                idx = i * n_cols + j
+                if idx >= n:
+                    continue
+
+                snap_id = sel_ids[idx]
+
+                ax.imshow(self.snapshots[snap_id])
+                ax.set_title(f'#{snap_id}')
+
+        fig.tight_layout()
+        plt.show()
 
 
 class Scene:
