@@ -140,33 +140,37 @@ def pad_img(src: np.ndarray, to_shape: tuple[int, int], value: int = 0) -> np.nd
     """
     Center-pad an image to the desired shape with a constant value
 
-    :param src: An input image
-    :param to_shape: New shape
+    :param src: A single- or multi-channel input image of the CHW dimension order
+    :param to_shape: New shape (H, W) to pad every channel matrix to
     :param value: Padding value
     :return: Padded image
     """
 
-    if src.ndim != 2:
+    if len(to_shape) != 2:
+        raise ValueError
+
+    if src.ndim not in (2, 3):
         raise NotImplementedError
 
-    if src.ndim != len(to_shape):
+    *_, h, w = src.shape
+    h_new, w_new = to_shape
+
+    if h_new < h or w_new < w:
         raise ValueError
 
-    y, x = src.shape
-    y_new, x_new = to_shape
+    h_pad = h_new - h
+    w_pad = w_new - w
 
-    if y_new < y or x_new < x:
-        raise ValueError
-
-    y_pad = y_new - y
-    x_pad = x_new - x
+    pad_width = [
+        (h_pad // 2, h_pad // 2 + h_pad % 2),
+        (w_pad // 2, w_pad // 2 + w_pad % 2)
+    ]
+    if src.ndim == 3:
+        pad_width = [(0, 0), *pad_width]
 
     return np.pad(
         src,
-        pad_width=(
-            (y_pad // 2, y_pad // 2 + y_pad % 2),
-            (x_pad // 2, x_pad // 2 + x_pad % 2)
-        ),
+        pad_width=pad_width,
         mode='constant',
         constant_values=value
     )
