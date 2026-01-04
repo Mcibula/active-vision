@@ -118,7 +118,7 @@ class Segmenter:
                 continue
 
             # CHW frame, O1HW masks
-            frame: Tensor = frames[frame_idx]
+            frame: Tensor = frames[frame_idx] * 255
             upscaled_masks: Tensor = resize_imgs(
                 src=r.masks.data.unsqueeze(1),
                 to_shape=(frame_h, frame_w),
