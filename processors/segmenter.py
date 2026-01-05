@@ -109,6 +109,9 @@ class Segmenter:
 
         objects: dict[int, TrackRecord] = {}
         for frame_idx, r in enumerate(self._results):
+            if r.boxes.id is None:
+                continue
+
             obj_ids: list[float] = r.boxes.id.cpu().tolist()
             n_objs: int = len(obj_ids)
 
