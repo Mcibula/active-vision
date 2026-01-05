@@ -19,7 +19,8 @@ class Stream:
             fps: int,
             extractor: Callable[[rs.composite_frame], rs.frame],
             colorizer: rs.colorizer | None = None,
-            sid: int = -1
+            sid: int = -1,
+            roi: tuple[int, int, int, int] | None = None
     ) -> None:
         self.name = name
         self.stype = stype
@@ -30,6 +31,26 @@ class Stream:
         self.extractor = extractor
         self.colorizer = colorizer
         self.sid = sid
+
+        self.roi_l: int | None = None
+        self.roi_t: int | None = None
+        self.roi_w: int | None = None
+        self.roi_h: int | None = None
+
+        if roi is not None:
+            if len(roi) != 4:
+                raise ValueError
+
+            (
+                self.roi_l, self.roi_t,
+                self.roi_w, self.roi_h
+            ) = roi
+
+            if not (
+                    0 <= self.roi_l < self.w_res and 0 <= self.roi_t < self.h_res
+                    and self.roi_w > 0 and self.roi_h > 0
+            ):
+                raise ValueError
 
     @property
     def config(self) -> tuple:
@@ -42,6 +63,15 @@ class Stream:
     def resolution(self) -> tuple[int, int]:
         return self.w_res, self.h_res
 
+    @property
+    def roi(self) -> tuple[int, int, int, int] | None:
+        roi = (self.roi_l, self.roi_t, self.roi_w, self.roi_h)
+
+        if None not in roi:
+            return roi
+
+        return None
+
     def extract(self, composite_frame: rs.composite_frame) -> rs.frame:
         return self.extractor(composite_frame)
 
@@ -53,6 +83,12 @@ class Stream:
             frame = self.colorizer.colorize(frame)
 
         image = np.asanyarray(frame.get_data())
+
+        if self.roi is not None:
+            image = image[
+                self.roi_t:self.roi_t + self.roi_h,
+                self.roi_l:self.roi_l + self.roi_w
+            ]
 
         if image.ndim == 2:
             return cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
@@ -218,16 +254,24 @@ if __name__ == '__main__':
                 stype=rs.stream.color,
                 w_res=1920,
                 h_res=1080,
-                dtype=rs.format.bgr8,
+                dtype=rs.format.rgb8,
                 fps=30,
-                extractor=lambda frames: frames.get_color_frame()
+                extractor=lambda frames: frames.get_color_frame(),
+                roi=(624, 0, 1036, 1080)
             )
         ])
     )
 
     try:
         camera.start_streaming()
-        frame = camera.get_frame(['color'])[0]
+        camera.warmup(t=4.0)
+
+        frame: np.ndarray | None = None
+        while frame is None:
+            frame = camera.get_frame(['color'])
+
+        frame = frame[0]
+
     finally:
         camera.stop_streaming()
 
