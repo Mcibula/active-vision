@@ -1,11 +1,47 @@
 import time
 from collections.abc import MutableMapping
+from dataclasses import dataclass
 from typing import Callable, Iterator
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pyrealsense2 as rs
+
+
+@dataclass
+class Intrinsics:
+    width: int
+    height: int
+    fx: float
+    fy: float
+    ppx: float
+    ppy: float
+    coeffs: list[float]
+    dist_model: rs.distortion
+
+    def __repr__(self) -> str:
+        return (
+            f'<Intrinsics '
+            f'{self.width}x{self.height} '
+            f'p[{self.ppx:.3f} {self.ppy:.3f}] '
+            f'f[{self.fx:.3f} {self.fy:.3f}] '
+            f'{self._model_name} [{" ".join([f"{x:.2f}" for x in self.coeffs])}]'
+            f'>'
+        )
+
+    @property
+    def _model_name(self) -> str:
+        return self.dist_model.name.replace('_', ' ').title()
+
+    @classmethod
+    def from_rs(cls, intrinsics: rs.intrinsics) -> 'Intrinsics':
+        return cls(
+            width=intrinsics.width, height=intrinsics.height,
+            fx=intrinsics.fx, fy=intrinsics.fy,
+            ppx=intrinsics.ppx, ppy=intrinsics.ppy,
+            coeffs=intrinsics.coeffs, dist_model=intrinsics.model
+        )
 
 
 class Stream:
@@ -31,6 +67,8 @@ class Stream:
         self.extractor = extractor
         self.colorizer = colorizer
         self.sid = sid
+
+        self._profile: rs.video_stream_profile | None = None
 
         self.roi_l: int | None = None
         self.roi_t: int | None = None
@@ -100,6 +138,29 @@ class Stream:
             return image
 
         raise ValueError
+
+    @property
+    def profile(self) -> rs.video_stream_profile | None:
+        return self._profile
+
+    @profile.setter
+    def profile(self, profile: rs.video_stream_profile) -> None:
+        if (
+            profile.stream_type() != self.stype
+            or profile.format() != self.dtype
+            or (profile.width(), profile.height()) != self.resolution
+            or profile.fps() != self.fps
+        ):
+            raise ValueError
+
+        self._profile = profile
+
+    @property
+    def intrinsics(self) -> Intrinsics | None:
+        if self.profile is None:
+            return None
+
+        return Intrinsics.from_rs(self.profile.get_intrinsics())
 
 
 class Streams(MutableMapping):
@@ -198,6 +259,11 @@ class RealsenseCamera:
 
         for stream in self.streams.values():
             self.config.enable_stream(*stream.config)
+
+        for sprofile in self.config.resolve(self.pipeline).get_streams():
+            sprofile: rs.video_stream_profile = sprofile.as_video_stream_profile()
+            stream = self.streams[sprofile.stream_type(), sprofile.stream_index()]
+            stream.profile = sprofile
 
         self.streaming: bool = False
 
