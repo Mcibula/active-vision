@@ -3,7 +3,6 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pyrealsense2 as rs
@@ -132,7 +131,11 @@ class Stream:
             ]
 
         if image.ndim == 2:
-            return cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+            return np.repeat(
+                image[:, :, np.newaxis],
+                repeats=3,
+                axis=2
+            )
 
         if image.ndim == 3:
             return image
