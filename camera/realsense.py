@@ -347,7 +347,18 @@ if __name__ == '__main__':
                 dtype=rs.format.rgb8,
                 fps=30,
                 extractor=lambda frames: frames.get_color_frame(),
-                roi=(624, 0, 1036, 1080)
+                roi=(526, 0, 1028, 1080)
+            ),
+            Stream(
+                name='depth',
+                stype=rs.stream.depth,
+                w_res=1280,
+                h_res=720,
+                dtype=rs.format.z16,
+                fps=30,
+                extractor=lambda frames: frames.get_depth_frame(),
+                colorizer=rs.colorizer(color_scheme=0),
+                roi=(386, 111, 501, 491)
             )
         ])
     )
@@ -358,12 +369,16 @@ if __name__ == '__main__':
 
         frame: np.ndarray | None = None
         while frame is None:
-            frame = camera.get_frame(['color'])
+            frame = camera.get_frame(['color', 'depth'])
 
-        frame = frame[0]
+        rgb_frame, depth_frame = frame
 
     finally:
         camera.stop_streaming()
 
-    plt.imshow(frame)
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(12, 6))
+    ax1.imshow(rgb_frame)
+    ax2.imshow(depth_frame)
+
+    fig.tight_layout()
     plt.show()
