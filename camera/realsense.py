@@ -19,7 +19,7 @@ class Stream:
             fps: int,
             extractor: Callable[[rs.composite_frame], rs.frame],
             colorizer: rs.colorizer | None = None,
-            sid: int = -1,
+            sid: int = 0,
             roi: tuple[int, int, int, int] | None = None
     ) -> None:
         self.name = name
@@ -102,13 +102,35 @@ class Stream:
 class Streams(MutableMapping):
     def __init__(self, streams: list[Stream]) -> None:
         self._streams: dict[str, Stream] = {}
-        self.update({
-            stream.name: stream
-            for stream in streams
-        })
+        self._stype_sids: list[tuple[rs.stream, int]] = []
 
-    def __getitem__(self, key: str) -> Stream:
-        return self._streams[key]
+        for stream in streams:
+            if stream.name in self:
+                raise ValueError
+
+            if stream.stype in self._stype_sids:
+                if stream.sid <= 0:
+                    raise ValueError
+
+                if (stream.stype, stream.sid) in self._stype_sids:
+                    raise ValueError
+
+            self[stream.name] = stream
+            self._stype_sids.append((stream.stype, stream.sid))
+
+    def __getitem__(self, key: str | rs.stream | tuple[rs.stream, int]) -> Stream:
+        if isinstance(key, str):
+            return self._streams[key]
+
+        if isinstance(key, rs.stream):
+            for stream, (stype, sid) in zip(self.values(), self._stype_sids):
+                if stype == key and sid <= 0:
+                    return stream
+
+            raise ValueError
+
+        stream_id = self._stype_sids.index(key)
+        return self.values()[stream_id]
 
     def __setitem__(self, key: str, value: Stream) -> None:
         self._streams[key] = value
