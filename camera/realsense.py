@@ -158,8 +158,7 @@ class RealsenseCamera:
         self.pipeline: rs.pipeline = rs.pipeline()
         self.config: rs.config = rs.config()
 
-        pipeline_wrapper = rs.pipeline_wrapper(self.pipeline)
-        pipeline_profile = self.config.resolve(pipeline_wrapper)
+        pipeline_profile = self.config.resolve(self.pipeline)
         self.device: rs.device = pipeline_profile.get_device()
         self.name: str = self.device.get_info(rs.camera_info.name)
 
