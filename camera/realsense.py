@@ -52,6 +52,9 @@ class Stream:
             ):
                 raise ValueError
 
+    def __repr__(self) -> str:
+        return f'<Stream "{self.name}" {self.w_res}x{self.h_res} @ {self.fps}fps {self.dtype.name.upper()}>'
+
     @property
     def config(self) -> tuple:
         if self.sid > 0:
@@ -117,6 +120,9 @@ class Streams(MutableMapping):
 
             self[stream.name] = stream
             self._stype_sids.append((stream.stype, stream.sid))
+
+    def __repr__(self) -> str:
+        return f'<Streams {", ".join(self.keys())}>'
 
     def __getitem__(self, key: str | rs.stream | tuple[rs.stream, int]) -> Stream:
         if isinstance(key, str):
@@ -194,6 +200,9 @@ class RealsenseCamera:
             self.config.enable_stream(*stream.config)
 
         self.streaming: bool = False
+
+    def __repr__(self) -> str:
+        return f'<Camera {self.name} operating {len(self.streams)} stream{"s" if len(self.streams) > 1 else ""}>'
 
     def __del__(self) -> None:
         if self.streaming:
