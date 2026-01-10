@@ -132,12 +132,6 @@ class Streams(MutableMapping):
             key=lambda res: res[0] * res[1]
         )
 
-    def any(self, composite_frame: rs.composite_frame) -> bool:
-        return any(
-            stream.extract(composite_frame)
-            for stream in self._streams.values()
-        )
-
     def values(self) -> list[Stream]:
         return list(self._streams.values())
 
