@@ -1,3 +1,4 @@
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pyrealsense2 as rs
@@ -45,7 +46,7 @@ finally:
 
 fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(12, 6))
 ax1.imshow(rgb_frame)
-ax2.imshow(depth_frame)
+ax2.imshow(cv2.normalize(depth_frame.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX))
 
 fig.tight_layout()
 plt.show()
