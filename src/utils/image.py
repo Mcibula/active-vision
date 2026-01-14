@@ -111,6 +111,10 @@ def resize_imgs(
             interpolation=InterpolationMode.BICUBIC,
             antialias=True
         )
+        src = torch.clamp(
+            src,
+            min=0.0, max=1.0
+        )
 
     top, bottom = round(dh - 0.1), round(dh + 0.1)
     left, right = round(dw - 0.1), round(dw + 0.1)
