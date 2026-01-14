@@ -3,8 +3,7 @@ import time
 import cv2
 import numpy as np
 
-from camera.realsense import RealsenseCamera
-from camera.realsense_profiles import FHD_RGB, HD_DEPTH, HD_IR1, HD_IR2
+from camera import FHD_RGB, HD_DEPTH, HD_IR1, HD_IR2, RealsenseCamera
 
 
 class RealsenseViewer:
