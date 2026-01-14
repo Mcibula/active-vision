@@ -10,8 +10,8 @@ import cv2
 import numpy as np
 
 from camera import RealsenseCamera
-from core import Scene
 from utils.visualization import BLACK, CYAN, GREEN, RED, YELLOW
+from .scene import Scene
 
 
 class PipelineController:
