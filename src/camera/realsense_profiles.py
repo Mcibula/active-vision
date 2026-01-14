@@ -4,7 +4,7 @@ Pre-defined RealSense camera profiles
 
 import pyrealsense2 as rs
 
-from .realsense import Stream
+from camera import Stream
 
 FHD_RGB = Stream(
     name='color',

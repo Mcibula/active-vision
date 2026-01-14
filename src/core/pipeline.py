@@ -9,10 +9,8 @@ from typing import Literal
 import cv2
 import numpy as np
 
-from camera.realsense import RealsenseCamera
-from camera.realsense_profiles import FHD_RGB
-from processors.segmenter import Segmenter
-from scene import Scene
+from camera import RealsenseCamera
+from core import Scene
 from utils.visualization import BLACK, CYAN, GREEN, RED, YELLOW
 
 
@@ -223,27 +221,3 @@ class PipelineController:
                 color=colors.get(line.split(':')[0].lower(), BLACK)
             )
             y += 25
-
-
-def main() -> Scene:
-    camera = RealsenseCamera(FHD_RGB)
-    segmenter = Segmenter(
-        engine='yoloe',
-        weights='./models/yolo/yoloe-11l-seg-pf.pt'
-    )
-    scene = Scene(segmenter=segmenter)
-
-    controller = PipelineController(
-        camera=camera,
-        scene=scene,
-        batch_size=4,
-        batch_timeout=0.2,
-        process_every=2
-    )
-    controller.run()
-
-    return scene
-
-
-if __name__ == '__main__':
-    out_scene = main()
