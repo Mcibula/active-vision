@@ -13,7 +13,8 @@ FHD_RGB = Stream(
     h_res=1080,
     dtype=rs.format.rgb8,
     fps=30,
-    extractor=lambda frames: frames.get_color_frame()
+    extractor=lambda frames: frames.get_color_frame(),
+    roi=(504, 0, 1038, 1080)
 )
 
 HD_DEPTH = Stream(
@@ -24,7 +25,8 @@ HD_DEPTH = Stream(
     dtype=rs.format.z16,
     fps=30,
     extractor=lambda frames: frames.get_depth_frame(),
-    colorizer=rs.colorizer(color_scheme=0)
+    # colorizer=rs.colorizer(color_scheme=0)
+    roi=(411, 106, 478, 491)
 )
 
 HD_IR1 = Stream(

@@ -1,4 +1,5 @@
-from camera import FHD_RGB, RealsenseCamera
+from camera import RealsenseCamera
+from camera.profiles import FHD_RGB, HD_DEPTH
 from core import PipelineController, Scene
 from processors import Segmenter
 
