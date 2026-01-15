@@ -276,6 +276,15 @@ class RealsenseCamera:
         if self.streaming:
             self.stop_streaming()
 
+    def __contains__(self, item: str | Stream) -> bool:
+        if isinstance(item, str):
+            return item in self.streams
+
+        return item in self.streams.values()
+
+    def __getitem__(self, key: str) -> Stream:
+        return self.streams[key]
+
     @property
     def sensors(self) -> dict[str, rs.sensor]:
         return {
@@ -286,6 +295,10 @@ class RealsenseCamera:
     @property
     def num_sensors(self) -> int:
         return len(self.sensors)
+
+    @property
+    def num_streams(self) -> int:
+        return len(self.streams)
 
     def _reset_devices(self) -> None:
         for dev in self._devices:
