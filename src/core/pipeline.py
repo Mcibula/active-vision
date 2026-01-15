@@ -8,6 +8,7 @@ from typing import Literal
 
 import cv2
 import numpy as np
+import pyrealsense2 as rs
 
 from camera import RealsenseCamera
 from utils.visualization import BLACK, CYAN, GREEN, RED, YELLOW
@@ -27,9 +28,18 @@ class PipelineController:
         self.shutdown = threading.Event()
 
         self.camera = camera
+        if (
+            self.camera.num_streams != 2
+            or 'color' not in self.camera
+            or 'depth' not in self.camera
+            or self.camera['color'].stype != rs.stream.color
+            or self.camera['depth'].stype != rs.stream.depth
+        ):
+            raise ValueError
+
         self.scene = scene
 
-        self.capture_buffer: Queue[np.ndarray] = Queue()
+        self.capture_buffer: Queue[tuple[np.ndarray, np.ndarray]] = Queue()
         self.display_buffer: Queue[np.ndarray] = Queue(maxsize=4)
         self.capture_limit: int = capture_limit
 
@@ -75,16 +85,17 @@ class PipelineController:
 
         try:
             while not self.shutdown.is_set():
-                frames = self.camera.get_frame(['color'])
+                frames = self.camera.get_frame(['color', 'depth'])
 
                 if frames is None:
                     time.sleep(0.001)
                     continue
 
-                frame = frames[0].copy()
+                rgb_frame = frames[0].copy()
+                d_frame = (frames[1] if frames[1].ndim == 2 else frames[1][:, :, 0]).copy()
 
                 with self.latest_frame_lock:
-                    self.latest_camera_frame = frame
+                    self.latest_camera_frame = rgb_frame
 
                 if num_total % self.process_every == 0:
                     if self.capture_buffer.qsize() > self.capture_limit:
@@ -92,7 +103,7 @@ class PipelineController:
                             self.capture_buffer.get_nowait()
                             num_dropped += 1
 
-                    self.capture_buffer.put(frame)
+                    self.capture_buffer.put((rgb_frame, d_frame))
 
                 num_total += 1
                 num_frames += 1
@@ -123,8 +134,8 @@ class PipelineController:
                     and ((time.time() - t0_batch) <= self.batch_timeout or len(batch) == 0)
             ):
                 try:
-                    frame = self.capture_buffer.get(timeout=0.005)
-                    batch.append(frame)
+                    composite_frame = self.capture_buffer.get(timeout=0.005)
+                    batch.append(composite_frame)
                 except queue.Empty:
                     if len(batch) > 0:
                         break

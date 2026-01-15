@@ -147,7 +147,7 @@ class Scene:
     def num_objects(self) -> int:
         return len(self.objects)
 
-    def read_frames(self, frames: np.ndarray | list[np.ndarray]) -> None:
+    def read_frames(self, frames: tuple[np.ndarray, np.ndarray] | list[tuple[np.ndarray, np.ndarray]]) -> None:
         if self.segmenter is None:
             raise RuntimeError
 
@@ -155,8 +155,9 @@ class Scene:
             frames = [frames]
 
         self.frame_count += len(frames)
+        rgb_frames, d_frames = zip(*frames)
 
-        record: dict[int, TrackRecord] = self.segmenter.track(frames)
+        record: dict[int, TrackRecord] = self.segmenter.track(list(rgb_frames))
 
         for obj_id, obj_record in record.items():
             if not obj_record.snapshots:

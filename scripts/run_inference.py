@@ -5,7 +5,7 @@ from processors import Segmenter
 
 
 def main() -> Scene:
-    camera = RealsenseCamera(FHD_RGB)
+    camera = RealsenseCamera([FHD_RGB, HD_DEPTH])
     segmenter = Segmenter(
         engine='yoloe',
         weights='../models/yolo/yoloe-11l-seg-pf.pt'
