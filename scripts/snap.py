@@ -1,35 +1,11 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import pyrealsense2 as rs
 
-from camera import RealsenseCamera, Stream, Streams
+from camera import RealsenseCamera
+from camera.profiles import FHD_RGB, HD_DEPTH_ALIGN
 
-camera = RealsenseCamera(
-    Streams([
-        Stream(
-            name='color',
-            stype=rs.stream.color,
-            w_res=1920,
-            h_res=1080,
-            dtype=rs.format.rgb8,
-            fps=30,
-            extractor=lambda frames: frames.get_color_frame(),
-            roi=(504, 0, 1038, 1080)
-        ),
-        Stream(
-            name='depth',
-            stype=rs.stream.depth,
-            w_res=1280,
-            h_res=720,
-            dtype=rs.format.z16,
-            fps=30,
-            extractor=lambda frames: frames.get_depth_frame(),
-            # colorizer=rs.colorizer(color_scheme=0),
-            roi=(411, 106, 478, 491)
-        )
-    ])
-)
+camera = RealsenseCamera([FHD_RGB, HD_DEPTH_ALIGN])
 
 try:
     camera.start_streaming()
