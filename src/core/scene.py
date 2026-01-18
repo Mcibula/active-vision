@@ -4,9 +4,51 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch import Tensor
 
 from processors.segmenter import Segmenter, TrackRecord
 from utils.image import mse
+
+
+class Snapshot:
+    def __init__(
+            self,
+            idx: int,
+            rgb: np.ndarray,
+            mask: np.ndarray,
+            depth: np.ndarray,
+            bbox: tuple[float, float, float, float],
+            features: tuple[Tensor, Tensor, Tensor]
+    ) -> None:
+        self._idx = idx
+        self._rgb = rgb
+        self._mask = mask
+        self._depth = depth
+        self._bbox = bbox
+        self._features = features
+
+    @property
+    def idx(self) -> int:
+        return self._idx
+
+    @property
+    def mask(self) -> np.ndarray:
+        return self._mask
+
+    @property
+    def rgb(self) -> np.ndarray:
+        return self._rgb
+
+    @property
+    def depth(self) -> np.ndarray:
+        return self._depth
+
+    @property
+    def bbox(self) -> tuple[float, float, float, float]:
+        return self._bbox
+
+    def features(self) -> tuple[Tensor, Tensor, Tensor]:
+        return self._features
 
 
 class RigidObject:
@@ -19,11 +61,7 @@ class RigidObject:
         self.rx: float | None = None
         self.ry: float | None = None
         self.rz: float | None = None
-
-        self._masks: list[np.ndarray] = []
-        self._snapshots: list[np.ndarray] = []
-        self._depth_maps: list[np.ndarray] = []
-        self._bboxes: list[tuple[float, float, float, float]] = []
+        self._snapshots: list[Snapshot] = []
 
         self.duplicate_thresh: float = 600.0
 
@@ -33,8 +71,8 @@ class RigidObject:
             f'with {self.num_snapshots} snapshot{"s" if self.num_snapshots > 1 else ''}>'
         )
 
-    def __getitem__(self, snapshot_id: int) -> tuple[np.ndarray, np.ndarray]:
-        return self._snapshots[snapshot_id], self._masks[snapshot_id]
+    def __getitem__(self, snapshot_id: int) -> Snapshot:
+        return self._snapshots[snapshot_id]
 
     @property
     def pose_6d(self) -> tuple[float, float, float, float, float, float]:
@@ -45,20 +83,8 @@ class RigidObject:
         return len(self._snapshots)
 
     @property
-    def masks(self) -> list[np.ndarray]:
-        return self._masks
-
-    @property
-    def snapshots(self) -> list[np.ndarray]:
+    def snapshots(self) -> list[Snapshot]:
         return self._snapshots
-
-    @property
-    def depth_maps(self) -> list[np.ndarray]:
-        return self._depth_maps
-
-    @property
-    def bboxes(self) -> list[tuple[float, float, float, float]]:
-        return self._bboxes
 
     def set_pose_6d(
             self,
@@ -89,23 +115,35 @@ class RigidObject:
             raise ValueError
 
         if not self._snapshots:
-            self._snapshots.append(snapshots.pop(0))
-            self._masks.append(masks.pop(0))
-            self._depth_maps.append(depth_maps.pop(0))
-            self._bboxes.append(bboxes.pop(0))
+            self._snapshots.append(
+                Snapshot(
+                    idx=0,
+                    rgb=snapshots.pop(0),
+                    mask=masks.pop(0),
+                    depth=depth_maps.pop(0),
+                    bbox=bboxes.pop(0),
+                    features=...
+                )
+            )
 
         for snapshot, mask, depth_map, bbox in zip(snapshots, masks, depth_maps, bboxes):
             # Skip possible duplicate
             if mse(
                     snapshot.transpose(2, 0, 1),
-                    self._snapshots[-1].transpose(2, 0, 1)
+                    self._snapshots[-1].rgb.transpose(2, 0, 1)
             ) < self.duplicate_thresh:
                 continue
 
-            self._snapshots.append(snapshot)
-            self._masks.append(mask)
-            self._depth_maps.append(depth_map)
-            self._bboxes.append(bbox)
+            self._snapshots.append(
+                Snapshot(
+                    idx=self.num_snapshots,
+                    rgb=snapshot,
+                    mask=mask,
+                    depth=depth_map,
+                    bbox=bbox,
+                    features=...
+                )
+            )
 
     def show_snapshots(self, n: int = 1, ids: list[int] | None = None) -> None:
         if ids is not None:
@@ -141,7 +179,7 @@ class RigidObject:
 
                 snap_id = sel_ids[idx]
 
-                ax.imshow(self.snapshots[snap_id])
+                ax.imshow(self.snapshots[snap_id].rgb)
                 ax.set_title(f'#{snap_id}')
 
         fig.tight_layout()
@@ -159,7 +197,7 @@ class Scene:
     def __repr__(self) -> str:
         return f'<Scene with {self.num_objects} objects>'
 
-    def __getitem__(self, obj_id: int | tuple[int, int]) -> RigidObject | tuple[np.ndarray, np.ndarray]:
+    def __getitem__(self, obj_id: int | tuple[int, int]) -> RigidObject | Snapshot:
         if isinstance(obj_id, int):
             return self.objects[obj_id]
 
