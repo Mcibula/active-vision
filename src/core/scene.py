@@ -22,6 +22,8 @@ class RigidObject:
 
         self._masks: list[np.ndarray] = []
         self._snapshots: list[np.ndarray] = []
+        self._depth_maps: list[np.ndarray] = []
+        self._bboxes: list[tuple[float, float, float, float]] = []
 
         self.duplicate_thresh: float = 600.0
 
@@ -50,6 +52,14 @@ class RigidObject:
     def snapshots(self) -> list[np.ndarray]:
         return self._snapshots
 
+    @property
+    def depth_maps(self) -> list[np.ndarray]:
+        return self._depth_maps
+
+    @property
+    def bboxes(self) -> list[tuple[float, float, float, float]]:
+        return self._bboxes
+
     def set_pose_6d(
             self,
             x: float, y: float, z: float,
@@ -63,15 +73,28 @@ class RigidObject:
             rx, ry, rz
         )
 
-    def register_visuals(self, snapshots: list[np.ndarray], masks: list[np.ndarray]) -> None:
-        if len(snapshots) != len(masks) or not snapshots:
+    def register_visuals(
+            self,
+            snapshots: list[np.ndarray],
+            masks: list[np.ndarray],
+            depth_maps: list[np.ndarray],
+            bboxes: list[tuple[float, float, float, float]]
+    ) -> None:
+        if (
+                len(snapshots) != len(masks)
+                or len(snapshots) != len(depth_maps)
+                or len(snapshots) != len(bboxes)
+                or not snapshots
+        ):
             raise ValueError
 
         if not self._snapshots:
-            self._snapshots.append(snapshots[0])
-            self._masks.append(masks[0])
+            self._snapshots.append(snapshots.pop(0))
+            self._masks.append(masks.pop(0))
+            self._depth_maps.append(depth_maps.pop(0))
+            self._bboxes.append(bboxes.pop(0))
 
-        for snapshot, mask in zip(snapshots[1:], masks[1:]):
+        for snapshot, mask, depth_map, bbox in zip(snapshots, masks, depth_maps, bboxes):
             # Skip possible duplicate
             if mse(
                     snapshot.transpose(2, 0, 1),
@@ -81,6 +104,8 @@ class RigidObject:
 
             self._snapshots.append(snapshot)
             self._masks.append(mask)
+            self._depth_maps.append(depth_map)
+            self._bboxes.append(bbox)
 
     def show_snapshots(self, n: int = 1, ids: list[int] | None = None) -> None:
         if ids is not None:
@@ -169,7 +194,12 @@ class Scene:
             obj: RigidObject = self.objects[obj_id]
             obj.register_visuals(
                 snapshots=obj_record.snapshots,
-                masks=obj_record.masks
+                masks=obj_record.masks,
+                depth_maps=[
+                    d_frames[obj_record.frame_ids[xyxy_id]][y1:y2 + 1, x1:x2 + 1]
+                    for xyxy_id, (x1, y1, x2, y2) in enumerate(obj_record.xyxy)
+                ],
+                bboxes=obj_record.xyxy
             )
 
     def save(self, path: str, store_models: bool = False) -> None:

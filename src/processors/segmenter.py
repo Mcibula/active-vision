@@ -24,6 +24,7 @@ class TrackRecord:
     xyxy: list[tuple[float, float, float, float]]
     masks: list[np.ndarray]
     snapshots: list[np.ndarray]
+    frame_ids: list[int]
 
 
 class Segmenter:
@@ -140,11 +141,19 @@ class Segmenter:
                     objects[obj_id] = TrackRecord(
                         xyxy=[],
                         masks=[],
-                        snapshots=[]
+                        snapshots=[],
+                        frame_ids=[]
                     )
 
                 record: TrackRecord = objects[obj_id]
-                record.xyxy.append(xyxy[idx])
+
+                x1, y1, x2, y2 = xyxy[idx]
+                x1 = max(0, int(x1))
+                y1 = max(0, int(y1))
+                x2 = min(correct_w, int(x2))
+                y2 = min(correct_h, int(y2))
+                record.xyxy.append((x1, y1, x2, y2))
+                record.frame_ids.append(frame_idx)
 
                 # HW mask, HWC snapshot
                 cropped_mask = crop_zeros(upscaled_masks[idx])
