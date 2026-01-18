@@ -14,7 +14,7 @@ FHD_RGB = Stream(
     dtype=rs.format.rgb8,
     fps=30,
     extractor=lambda frames: frames.get_color_frame(),
-    roi=(504, 0, 1038, 1080)
+    roi=(rgb_roi := (504, 0, 1038, 1080))
 )
 
 HD_DEPTH = Stream(
@@ -25,8 +25,19 @@ HD_DEPTH = Stream(
     dtype=rs.format.z16,
     fps=30,
     extractor=lambda frames: frames.get_depth_frame(),
-    # colorizer=rs.colorizer(color_scheme=0)
+    colorizer=rs.colorizer(color_scheme=0),
     roi=(411, 106, 478, 491)
+)
+
+HD_DEPTH_ALIGN = Stream(
+    name='depth',
+    stype=rs.stream.depth,
+    w_res=1280,
+    h_res=720,
+    dtype=rs.format.z16,
+    fps=30,
+    extractor=lambda frames: frames.get_depth_frame(),
+    roi=rgb_roi
 )
 
 HD_IR1 = Stream(

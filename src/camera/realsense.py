@@ -248,6 +248,7 @@ class RealsenseCamera:
 
         self.pipeline: rs.pipeline = rs.pipeline()
         self.config: rs.config = rs.config()
+        self.align: rs.align = rs.align(rs.stream.color)
 
         pipeline_profile = self.config.resolve(self.pipeline)
         self.device: rs.device = pipeline_profile.get_device()
@@ -320,7 +321,7 @@ class RealsenseCamera:
         success, composite = self.pipeline.try_wait_for_frames(timeout_ms=0)
 
         if success:
-            return composite
+            return self.align.process(composite)
 
         return None
 
