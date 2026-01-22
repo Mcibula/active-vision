@@ -65,7 +65,10 @@ class RigidObject:
         self._trajectory: list[ObjectPose] = []
         self._snapshots: list[Snapshot] = []
 
-        self.duplicate_thresh: float = 600.0
+        self.max_snapshots: int = 100
+        self.mse_thresh: float = 600.0
+        self.kpt_thresh: int = 30
+        self.dupl_history = 5
 
     def __repr__(self) -> str:
         return (
@@ -95,58 +98,82 @@ class RigidObject:
     def snapshots(self) -> list[Snapshot]:
         return self._snapshots
 
-    def add_pose(
-            self,
-            x: float, y: float, z: float,
-            rx: float, ry: float, rz: float
-    ) -> None:
-        self._trajectory.append(ObjectPose(x, y, z, rx, ry, rz))
+    def add_pose(self, obj_pose: ObjectPose) -> None:
+        self._trajectory.append(obj_pose)
 
-    def register_visuals(
+    def register_observations(
             self,
             snapshots: list[np.ndarray],
             masks: list[np.ndarray],
             depth_maps: list[np.ndarray],
-            bboxes: list[tuple[float, float, float, float]]
+            bboxes: list[tuple[int, int, int, int]],
+            feat_extractor: PoseEstimator
     ) -> None:
         if (
-                len(snapshots) != len(masks)
-                or len(snapshots) != len(depth_maps)
-                or len(snapshots) != len(bboxes)
-                or not snapshots
+                not snapshots
+                or len({len(snapshots), len(masks), len(depth_maps), len(bboxes)}) != 1
         ):
             raise ValueError
 
-        if not self._snapshots:
-            self._snapshots.append(
-                Snapshot(
-                    idx=0,
-                    rgb=snapshots.pop(0),
-                    mask=masks.pop(0),
-                    depth=depth_maps.pop(0),
-                    bbox=bboxes.pop(0),
-                    features=...
+        for idx in range(len(snapshots)):
+            rgb: np.ndarray = snapshots[idx]
+            mask: np.ndarray = masks[idx]
+            depth_map: np.ndarray = depth_maps[idx]
+            bbox: tuple[int, int, int, int] = bboxes[idx]
+
+            feats: KeypointFeatures = feat_extractor.compute_features(rgb)
+
+            if self.num_snapshots > 0:
+                pose: ObjectPose = feat_extractor.estimate_pose(
+                    query=feats,
+                    query_bbox=bbox,
+                    ref_obj=self
                 )
+
+                self.add_pose(
+                    pose
+                    if pose is not None
+                    else ObjectPose.lost()
+                )
+
+            if self.num_snapshots >= self.max_snapshots:
+                continue
+
+            if self._pixel_duplicate(rgb):
+                continue
+
+            feat_sim = feat_extractor.check_similarity(
+                new=feats,
+                refs=[s.features for s in self._snapshots],
+                batch_size=4,
+                match_thresh=self.kpt_thresh
             )
 
-        for snapshot, mask, depth_map, bbox in zip(snapshots, masks, depth_maps, bboxes):
-            # Skip possible duplicate
-            if mse(
-                    snapshot.transpose(2, 0, 1),
-                    self._snapshots[-1].rgb.transpose(2, 0, 1)
-            ) < self.duplicate_thresh:
+            if feat_sim:
                 continue
 
             self._snapshots.append(
                 Snapshot(
                     idx=self.num_snapshots,
-                    rgb=snapshot,
+                    rgb=rgb,
                     mask=mask,
                     depth=depth_map,
                     bbox=bbox,
-                    features=...
+                    features=feats
                 )
             )
+
+    def _pixel_duplicate(self, rgb: np.ndarray) -> bool:
+        chw_snap = rgb.transpose(2, 0, 1)
+
+        for hist_snapshot in self._snapshots[-self.dupl_history:]:
+            if mse(
+                    chw_snap,
+                    hist_snapshot.rgb.transpose(2, 0, 1)
+            ) < self.mse_thresh:
+                return True
+
+        return False
 
     def show_snapshots(self, n: int = 1, ids: list[int] | None = None) -> None:
         if ids is not None:
@@ -190,9 +217,10 @@ class RigidObject:
 
 
 class Scene:
-    def __init__(self, segmenter: Segmenter) -> None:
+    def __init__(self, segmenter: Segmenter, pose_estimator: PoseEstimator) -> None:
         self.device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.segmenter: Segmenter | None = segmenter
+        self.pose_estimator: PoseEstimator | None = pose_estimator
 
         self.frame_count: int = 0
         self.objects: dict[int, RigidObject] = {}
@@ -217,6 +245,9 @@ class Scene:
         if self.segmenter is None:
             raise RuntimeError
 
+        if self.pose_estimator is None:
+            raise RuntimeError
+
         if not isinstance(frames, list):
             frames = [frames]
 
@@ -233,14 +264,15 @@ class Scene:
                 self.objects[obj_id] = RigidObject(obj_id)
 
             obj: RigidObject = self.objects[obj_id]
-            obj.register_visuals(
+            obj.register_observations(
                 snapshots=obj_record.snapshots,
                 masks=obj_record.masks,
                 depth_maps=[
                     d_frames[obj_record.frame_ids[xyxy_id]][y1:y2 + 1, x1:x2 + 1]
                     for xyxy_id, (x1, y1, x2, y2) in enumerate(obj_record.xyxy)
                 ],
-                bboxes=obj_record.xyxy
+                bboxes=obj_record.xyxy,
+                feat_extractor=self.pose_estimator
             )
 
     def save(self, path: str, store_models: bool = False) -> None:
