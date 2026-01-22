@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+from processors.pose_estimator import ObjectPose
 from utils.image import mse
 
 if TYPE_CHECKING:
@@ -61,12 +62,7 @@ class RigidObject:
     def __init__(self, obj_id: int) -> None:
         self.obj_id = obj_id
 
-        self.x: float | None = None
-        self.y: float | None = None
-        self.z: float | None = None
-        self.rx: float | None = None
-        self.ry: float | None = None
-        self.rz: float | None = None
+        self._trajectory: list[ObjectPose] = []
         self._snapshots: list[Snapshot] = []
 
         self.duplicate_thresh: float = 600.0
@@ -81,8 +77,15 @@ class RigidObject:
         return self._snapshots[snapshot_id]
 
     @property
-    def pose_6d(self) -> tuple[float, float, float, float, float, float]:
-        return self.x, self.y, self.z, self.rx, self.ry, self.rz
+    def num_poses(self) -> int:
+        return len(self._trajectory)
+
+    @property
+    def pose(self) -> tuple[float, float, float, float, float, float] | None:
+        if self.num_poses == 0:
+            return None
+
+        return self._trajectory[-1].pose_6d
 
     @property
     def num_snapshots(self) -> int:
@@ -92,18 +95,12 @@ class RigidObject:
     def snapshots(self) -> list[Snapshot]:
         return self._snapshots
 
-    def set_pose_6d(
+    def add_pose(
             self,
             x: float, y: float, z: float,
             rx: float, ry: float, rz: float
     ) -> None:
-        (
-            self.x, self.y, self.z,
-            self.rx, self.ry, self.rz
-        ) = (
-            x, y, z,
-            rx, ry, rz
-        )
+        self._trajectory.append(ObjectPose(x, y, z, rx, ry, rz))
 
     def register_visuals(
             self,
