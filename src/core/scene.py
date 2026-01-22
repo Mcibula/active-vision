@@ -84,11 +84,11 @@ class RigidObject:
         return len(self._trajectory)
 
     @property
-    def pose(self) -> tuple[float, float, float, float, float, float] | None:
+    def pose(self) -> ObjectPose | None:
         if self.num_poses == 0:
             return None
 
-        return self._trajectory[-1].pose_6d
+        return self._trajectory[-1]
 
     @property
     def num_snapshots(self) -> int:
