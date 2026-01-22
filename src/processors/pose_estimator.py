@@ -88,7 +88,8 @@ class ObjectPose:
     def __init__(
             self,
             x: float, y: float, z: float,
-            rx: float, ry: float, rz: float
+            rx: float, ry: float, rz: float,
+            is_valid: bool = True
     ) -> None:
         self.x: float = x
         self.y: float = y
@@ -98,7 +99,12 @@ class ObjectPose:
         self.ry: float = ry
         self.rz: float = rz
 
+        self._is_valid: bool = is_valid
+
     def __repr__(self) -> str:
+        if self.is_lost:
+            return '<ObjectPose [LOST]>'
+
         return (
             f'<ObjectPose '
             f'pos:[{self.x:.3f} {self.y:.3f} {self.z:.3f}] m, '
@@ -117,7 +123,16 @@ class ObjectPose:
 
         return cls(
             x=tx, y=ty, z=tz,
-            rx=rx, ry=ry, rz=rz
+            rx=rx, ry=ry, rz=rz,
+            is_valid=True
+        )
+
+    @classmethod
+    def lost(cls) -> ObjectPose:
+        return cls(
+            x=np.nan, y=np.nan, z=np.nan,
+            rx=np.nan, ry=np.nan, rz=np.nan,
+            is_valid=False
         )
 
     @property
@@ -143,6 +158,10 @@ class ObjectPose:
     @property
     def pose_6d(self) -> tuple[float, float, float, float, float, float]:
         return self.pos + self.rot
+
+    @property
+    def is_lost(self) -> bool:
+        return not self._is_valid
 
 
 class PoseEstimator:
