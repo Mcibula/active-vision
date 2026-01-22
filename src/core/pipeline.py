@@ -1,18 +1,22 @@
+from __future__ import annotations
+
 import contextlib
 import queue
 import signal
 import threading
 import time
 from queue import Queue
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import cv2
 import numpy as np
 import pyrealsense2 as rs
 
-from camera import RealsenseCamera
 from utils.visualization import BLACK, CYAN, GREEN, RED, YELLOW
-from .scene import Scene
+
+if TYPE_CHECKING:
+    from camera import RealsenseCamera
+    from scene import Scene
 
 
 class PipelineController:

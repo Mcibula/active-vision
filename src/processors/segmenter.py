@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator
@@ -5,16 +7,16 @@ from typing import TYPE_CHECKING, Iterator
 import cv2
 import numpy as np
 import torch
-from PIL.Image import Image
 from torch import Tensor
 from ultralytics import SAM, YOLO, YOLOE
-from ultralytics.engine.results import Results
 from ultralytics.utils.checks import check_imgsz
 
 from utils.image import crop_zeros, resize_imgs
 
 if TYPE_CHECKING:
+    from PIL.Image import Image
     from ultralytics.engine.model import Model
+    from ultralytics.engine.results import Results
 
 logging.getLogger('ultralytics').setLevel(logging.ERROR)
 

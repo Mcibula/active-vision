@@ -1,13 +1,18 @@
+from __future__ import annotations
+
 import random
+from typing import TYPE_CHECKING
 
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch import Tensor
 
-from processors.segmenter import Segmenter, TrackRecord
 from utils.image import mse
+
+if TYPE_CHECKING:
+    from processors.pose_estimator import KeypointFeatures, PoseEstimator
+    from processors.segmenter import Segmenter, TrackRecord
 
 
 class Snapshot:
@@ -18,7 +23,7 @@ class Snapshot:
             mask: np.ndarray,
             depth: np.ndarray,
             bbox: tuple[float, float, float, float],
-            features: tuple[Tensor, Tensor, Tensor]
+            features: KeypointFeatures
     ) -> None:
         self._idx = idx
         self._rgb = rgb
@@ -47,7 +52,8 @@ class Snapshot:
     def bbox(self) -> tuple[float, float, float, float]:
         return self._bbox
 
-    def features(self) -> tuple[Tensor, Tensor, Tensor]:
+    @property
+    def features(self) -> KeypointFeatures:
         return self._features
 
 
@@ -255,7 +261,7 @@ class Scene:
         )
 
     @classmethod
-    def load(cls, path: str) -> 'Scene':
+    def load(cls, path: str) -> Scene:
         store: dict[str, ...] = joblib.load(path)
         scene: Scene = cls.__new__(cls)
 
