@@ -1,11 +1,11 @@
 from camera import RealsenseCamera
-from camera.profiles import FHD_RGB, HD_DEPTH
+from camera.profiles import FHD_RGB, HD_DEPTH_ALIGN
 from core import PipelineController, Scene
 from processors import Segmenter
 
 
 def main() -> Scene:
-    camera = RealsenseCamera([FHD_RGB, HD_DEPTH])
+    camera = RealsenseCamera([FHD_RGB, HD_DEPTH_ALIGN])
     segmenter = Segmenter(
         engine='yoloe',
         weights='../models/yolo/yoloe-11l-seg-pf.pt'
