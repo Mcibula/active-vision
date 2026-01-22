@@ -23,7 +23,7 @@ logging.getLogger('ultralytics').setLevel(logging.ERROR)
 
 @dataclass
 class TrackRecord:
-    xyxy: list[tuple[float, float, float, float]]
+    xyxy: list[tuple[int, int, int, int]]
     masks: list[np.ndarray]
     snapshots: list[np.ndarray]
     frame_ids: list[int]
