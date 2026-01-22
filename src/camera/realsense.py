@@ -15,7 +15,7 @@ class Intrinsics:
     fy: float
     ppx: float
     ppy: float
-    coeffs: list[float]
+    coeffs: np.ndarray
     dist_model: rs.distortion
 
     def __repr__(self) -> str:
@@ -32,13 +32,24 @@ class Intrinsics:
     def _model_name(self) -> str:
         return self.dist_model.name.replace('_', ' ').title()
 
+    @property
+    def K(self) -> np.ndarray:
+        return np.array([
+            [self.fx,     0.0, self.ppx],
+            [    0.0, self.fy, self.ppy],
+            [    0.0,     0.0,      1.0]
+        ], dtype=np.float32)
+
     @classmethod
     def from_rs(cls, intrinsics: rs.intrinsics) -> 'Intrinsics':
         return cls(
             width=intrinsics.width, height=intrinsics.height,
+
             fx=intrinsics.fx, fy=intrinsics.fy,
             ppx=intrinsics.ppx, ppy=intrinsics.ppy,
-            coeffs=intrinsics.coeffs, dist_model=intrinsics.model
+
+            coeffs=np.array(intrinsics.coeffs, dtype=np.float32),
+            dist_model=intrinsics.model
         )
 
 
@@ -67,6 +78,7 @@ class Stream:
         self.sid = sid
 
         self._profile: rs.video_stream_profile | None = None
+        self.intrinsics: Intrinsics | None = None
 
         self.roi_l: int | None = None
         self.roi_t: int | None = None
@@ -156,13 +168,7 @@ class Stream:
             raise ValueError
 
         self._profile = profile
-
-    @property
-    def intrinsics(self) -> Intrinsics | None:
-        if self.profile is None:
-            return None
-
-        return Intrinsics.from_rs(self.profile.get_intrinsics())
+        self.intrinsics = Intrinsics.from_rs(self.profile.get_intrinsics())
 
 
 class Streams(MutableMapping):
