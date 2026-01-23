@@ -81,7 +81,7 @@ class RealsenseViewer:
                 ir2 = frames[3] if len(frames) > 3 else None
 
                 streams: dict[int, tuple[np.ndarray, str]] = {
-                    0: (color, 'Color (RGB'),
+                    0: (color, 'Color (RGB)'),
                     1: (
                         self._process_depth(self._catch_blank(depth)),
                         'Depth (Jet)'
