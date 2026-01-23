@@ -238,6 +238,9 @@ class Scene:
     def __repr__(self) -> str:
         return f'<Scene with {self.num_objects} objects>'
 
+    def __iter__(self) -> Iterator[RigidObject]:
+        yield from self.objects.values()
+
     def __getitem__(self, obj_id: int | tuple[int, int]) -> RigidObject | Snapshot:
         if isinstance(obj_id, int):
             return self.objects[obj_id]
