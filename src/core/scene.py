@@ -155,7 +155,6 @@ class RigidObject:
                 feat_sim = feat_extractor.check_similarity(
                     new=feats,
                     refs=[s.features for s in self._snapshots],
-                    batch_size=4,
                     match_thresh=self.kpt_thresh
                 )
 

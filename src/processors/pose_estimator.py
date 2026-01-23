@@ -78,11 +78,31 @@ class KeypointFeatures:
     def keys(self) -> Iterator[str]:
         yield from self._dict.keys()
 
-    def make_batch(self, n_repeats: int) -> KeypointFeatures:
+    def repeat(self, n_repeats: int) -> KeypointFeatures:
         return KeypointFeatures(
             keypoints=self._keypoints.repeat(n_repeats, 1, 1),
             descriptors=self._descriptors.repeat(n_repeats, 1, 1),
             img_size=self._img_size.repeat(n_repeats, 1)
+        )
+
+    @classmethod
+    def merge(cls, features: list[KeypointFeatures]) -> KeypointFeatures | None:
+        if not features:
+            return None
+
+        kpts, desc, sizes = zip(*[
+            (f.keypoints[0], f.descriptors[0], f.img_size[0])
+            for f in features
+        ])
+
+        kpts = torch.stack(kpts, dim=0)
+        desc = torch.stack(desc, dim=0)
+        sizes = torch.stack(sizes, dim=0)
+
+        return KeypointFeatures(
+            keypoints=kpts,
+            descriptors=desc,
+            img_size=sizes
         )
 
     @classmethod
@@ -216,26 +236,6 @@ class PoseEstimator:
         t_img = kornia.image_to_tensor(img, keepdim=False).float() / 255.0
         return t_img.to(self.device)
 
-    @staticmethod
-    def _batch_features(features: list[KeypointFeatures]) -> KeypointFeatures | None:
-        if not features:
-            return None
-
-        kpts, desc, sizes = zip(*[
-            (f.keypoints[0], f.descriptors[0], f.img_size[0])
-            for f in features
-        ])
-
-        kpts = torch.stack(kpts, dim=0)
-        desc = torch.stack(desc, dim=0)
-        sizes = torch.stack(sizes, dim=0)
-
-        return KeypointFeatures(
-            keypoints=kpts,
-            descriptors=desc,
-            img_size=sizes
-        )
-
     def compute_features(self, rgb_crop: np.ndarray, n_kpts: int = 1000) -> KeypointFeatures:
         if rgb_crop.ndim != 3 or rgb_crop.shape[-1] != 3:
             raise ValueError
@@ -261,27 +261,17 @@ class PoseEstimator:
             self,
             new: KeypointFeatures,
             refs: list[KeypointFeatures],
-            batch_size: int = 4,
             match_thresh: int = 15
     ) -> int:
-        for ref_idx in range(0, len(refs), batch_size):
-            batch: list[KeypointFeatures] = refs[ref_idx:ref_idx + batch_size]
-            cur_batch = len(batch)
-
-            ref_feats = self._batch_features(batch)
-
+        for ref in refs:
             with torch.inference_mode():
                 matches_out = self.matcher({
-                    'image0': dict(ref_feats),
-                    'image1': {
-                        'keypoints': new.keypoints.repeat(cur_batch, 1, 1),
-                        'descriptors': new.descriptors.repeat(cur_batch, 1, 1),
-                        'image_size': new.img_size.repeat(cur_batch, 1)
-                    }
+                    'image0': dict(ref),
+                    'image1': dict(new)
                 })
 
-                n_valid = (torch.stack(matches_out['scores']) > self.score_thresh).sum(dim=1)
-                if (n_valid > match_thresh).any():
+                n_valid = (matches_out['scores'][0] > self.score_thresh).sum()
+                if n_valid > match_thresh:
                     return True
 
         return False
@@ -300,6 +290,8 @@ class PoseEstimator:
             return None
 
         qx1, qy1, qx2, qy2 = query_bbox
+
+        # Sanity check the bbox
         if (qx2 - qx1) < 10 or (qy2 - qy1) < 10:
             return None
 
@@ -308,34 +300,42 @@ class PoseEstimator:
                 raise ValueError
 
             q_crop: np.ndarray = query[qy1:qy2, qx1:qx2]
+            if q_crop.size == 0:
+                return None
+
             q_feats: KeypointFeatures = self.compute_features(q_crop)
         else:
             q_feats = query
 
-        q_feats = q_feats.make_batch(ref_obj.num_snapshots)
-
         if n_refs < 0:
             n_refs = None
 
-        ref_feats = self._batch_features([
+        ref_feats = [
             snap.features
             for snap in ref_obj.snapshots[:n_refs]
-        ])
+        ]
+
+        best_idx: int = -1
+        best_score: int = 0
+        best_matches: Tensor | None = None
 
         with torch.inference_mode():
-            matches_out = self.matcher({
-                'image0': dict(ref_feats),
-                'image1': dict(q_feats)
-            })
+            for idx, ref_feat in enumerate(ref_feats):
+                matches_out = self.matcher({
+                    'image0': dict(ref_feat),
+                    'image1': dict(q_feats)
+                })
 
-            matches: list[Tensor] = matches_out['matches']              # (B, N, 2)
-            scores: Tensor = torch.stack(matches_out['scores'])         # (B, N)
+                matches: Tensor = matches_out['matches'][0]              # (N, 2)
+                scores: Tensor = matches_out['scores'][0]                # (N,)
 
-            valid: Tensor = scores > self.score_thresh                  # (B, N)
-            valid_counts: Tensor = valid.sum(dim=1)                     # (N,)
-            best_idx: int = valid_counts.argmax().item()
-            best_score: int = valid_counts[best_idx].item()
-            best_matches: Tensor = matches[best_idx][valid[best_idx]]   # (M, 2)
+                valid: Tensor = scores > self.score_thresh               # (N,)
+                n_valid: int = valid.sum().item()
+
+                if n_valid > best_score:
+                    best_score = n_valid
+                    best_idx = idx
+                    best_matches = matches[valid]                       # (M, 2)
 
         if best_score < self.match_thresh:
             return None
@@ -407,7 +407,7 @@ class PoseEstimator:
             iterationsCount=100,
             reprojectionError=6.0,
             confidence=0.99,
-            flags=cv2.SOLVEPNP_SQPNP
+            flags=cv2.SOLVEPNP_ITERATIVE
         )
 
         if not success:
