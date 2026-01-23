@@ -11,12 +11,14 @@ from typing import TYPE_CHECKING, Literal
 import cv2
 import numpy as np
 import pyrealsense2 as rs
+from scipy.spatial.transform import Rotation
 
-from utils.visualization import BLACK, CYAN, GREEN, RED, YELLOW
+from utils.visualization import BLACK, BLUE, CYAN, GREEN, RED, YELLOW
 
 if TYPE_CHECKING:
     from camera import RealsenseCamera
-    from scene import Scene
+    from processors.pose_estimator import ObjectPose
+    from scene import RigidObject, Scene
 
 
 class PipelineController:
@@ -58,6 +60,7 @@ class PipelineController:
         self.batch_size: int = batch_size
         self.batch_timeout: float = batch_timeout
         self.process_every: int = process_every
+        self.visibility_thresh: float = 0.5
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, lambda *_: self.shutdown.set())
@@ -187,6 +190,14 @@ class PipelineController:
 
             if frame is not None:
                 display: np.ndarray = frame.copy()
+
+                now = time.time()
+                for obj in self.scene:
+                    if (now - obj.last_updated) > self.visibility_thresh:
+                        continue
+
+                    self._draw_pose(display, obj)
+
                 self._draw_hud(display)
                 cv2.imshow(
                     'Inference',
@@ -236,3 +247,49 @@ class PipelineController:
                 color=colors.get(line.split(':')[0].lower(), BLACK)
             )
             y += 25
+
+    def _draw_pose(self, frame: np.ndarray, obj: RigidObject) -> None:
+        pose: ObjectPose = obj.pose
+
+        if pose is None or pose.is_lost:
+            return
+
+        try:
+            R: np.ndarray = Rotation.from_euler('xyz', pose.rot).as_matrix()
+            rvec, _ = cv2.Rodrigues(R)
+            tvec = np.array(pose.pos, dtype=np.float32)
+
+            axis_len = 0.1
+            obj_points = np.vstack(
+                (
+                    np.zeros(3,),
+                    np.eye(3) * axis_len
+                ),
+                dtype=np.float32
+            )
+
+            intrinsics = self.camera['color'].intrinsics
+            img_points, _ = cv2.projectPoints(
+                objectPoints=obj_points,
+                rvec=rvec, tvec=tvec,
+                cameraMatrix=intrinsics.K,
+                distCoeffs=intrinsics.coeffs
+            )
+            img_points = img_points.astype(int).reshape(-1, 2)
+
+            origin = tuple(img_points[0])
+            for idx, clr in enumerate((RED, GREEN, BLUE)):
+                cv2.line(
+                    img=frame,
+                    pt1=origin, pt2=tuple(img_points[idx + 1]),
+                    color=clr, thickness=3
+                )
+
+            label = f'#{obj.obj_id} {pose.z:.3f}m'
+            cv2.putText(
+                img=frame, text=label, org=(origin[0], origin[1] - 10),
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.2, thickness=2,
+                color=BLACK
+            )
+        except Exception as e:
+            pass
