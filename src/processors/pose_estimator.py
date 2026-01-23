@@ -236,8 +236,17 @@ class PoseEstimator:
             img_size=sizes
         )
 
-    def compute_features(self, rgb_crops: np.ndarray, n_kpts: int = 1000) -> KeypointFeatures:
-        img: Tensor = self._preprocess(rgb_crops)
+    def compute_features(self, rgb_crop: np.ndarray, n_kpts: int = 1000) -> KeypointFeatures:
+        if rgb_crop.ndim != 3 or rgb_crop.shape[-1] != 3:
+            raise ValueError
+
+        n_eff = np.count_nonzero(np.any(rgb_crop, axis=-1))
+        if n_eff < 50:
+            return KeypointFeatures.empty()
+
+        n_kpts = min(n_kpts, n_eff)
+
+        img: Tensor = self._preprocess(rgb_crop)
 
         with torch.inference_mode():
             keypoints, scores, descriptors = self.detector(img, n=n_kpts)

@@ -66,9 +66,10 @@ class RigidObject:
         self._snapshots: list[Snapshot] = []
 
         self.max_snapshots: int = 100
+        self.dupl_history = 5
         self.mse_thresh: float = 600.0
         self.kpt_thresh: int = 30
-        self.dupl_history = 5
+        self.eff_thresh: int = 600
 
     def __repr__(self) -> str:
         return (
@@ -120,6 +121,10 @@ class RigidObject:
             mask: np.ndarray = masks[idx]
             depth_map: np.ndarray = depth_maps[idx]
             bbox: tuple[int, int, int, int] = bboxes[idx]
+
+            n_eff = np.count_nonzero(mask)
+            if n_eff < self.eff_thresh:
+                continue
 
             feats: KeypointFeatures = feat_extractor.compute_features(rgb)
 
