@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING
+import time
+from typing import TYPE_CHECKING, Iterator
 
 import joblib
 import matplotlib.pyplot as plt
@@ -65,6 +66,8 @@ class RigidObject:
         self._trajectory: list[ObjectPose] = []
         self._snapshots: list[Snapshot] = []
 
+        self.last_updated: float = 0.0
+
         self.max_snapshots: int = 100
         self.dupl_history = 5
         self.mse_thresh: float = 600.0
@@ -101,6 +104,7 @@ class RigidObject:
 
     def add_pose(self, obj_pose: ObjectPose) -> None:
         self._trajectory.append(obj_pose)
+        self.last_updated = time.time()
 
     def register_observations(
             self,
