@@ -416,7 +416,7 @@ class PoseEstimator:
         for idx in range(len(kpts)):
             x, y = map(int, kpts[idx])
 
-            if 0 <= x < w and 0 <= y < h and mask[x, y] == 1:
+            if 0 <= x < h and 0 <= y < w and mask[x, y] == 1:
                 valid.append(idx)
 
         return np.array(valid, dtype=np.int32)
