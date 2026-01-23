@@ -323,7 +323,7 @@ class PoseEstimator:
             valid_counts: Tensor = valid.sum(dim=1)                     # (N,)
             best_idx: int = valid_counts.argmax().item()
             best_score: int = valid_counts[best_idx].item()
-            best_matches: Tensor = matches[best_idx][valid]             # (M, 2)
+            best_matches: Tensor = matches[best_idx][valid[best_idx]]   # (M, 2)
 
         if best_score < self.match_thresh:
             return None
