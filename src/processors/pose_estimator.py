@@ -64,7 +64,7 @@ class KeypointFeatures:
         return {
             'keypoints': self._keypoints,
             'descriptors': self._descriptors,
-            'img_size': self._img_size
+            'image_size': self._img_size
         }
 
     def __iter__(self) -> Iterator[Tensor]:
