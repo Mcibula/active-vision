@@ -148,18 +148,19 @@ class RigidObject:
             if self.num_snapshots >= self.max_snapshots:
                 continue
 
-            if self._pixel_duplicate(rgb):
-                continue
+            if self.num_snapshots > 0:
+                if self._pixel_duplicate(rgb):
+                    continue
 
-            feat_sim = feat_extractor.check_similarity(
-                new=feats,
-                refs=[s.features for s in self._snapshots],
-                batch_size=4,
-                match_thresh=self.kpt_thresh
-            )
+                feat_sim = feat_extractor.check_similarity(
+                    new=feats,
+                    refs=[s.features for s in self._snapshots],
+                    batch_size=4,
+                    match_thresh=self.kpt_thresh
+                )
 
-            if feat_sim:
-                continue
+                if feat_sim:
+                    continue
 
             self._snapshots.append(
                 Snapshot(
