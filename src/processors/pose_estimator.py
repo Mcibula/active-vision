@@ -85,6 +85,16 @@ class KeypointFeatures:
             img_size=self._img_size.repeat(n_repeats, 1)
         )
 
+    @classmethod
+    def empty(cls, desc_dim: int = 256) -> KeypointFeatures:
+        device = infer_device()
+
+        return cls(
+            keypoints=torch.empty((1, 0, 2), device=device),
+            descriptors=torch.empty((1, 0, desc_dim), device=device),
+            img_size=torch.tensor([[0, 0]], device=device)
+        )
+
 
 class ObjectPose:
     def __init__(
