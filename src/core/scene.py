@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 
 from processors.pose_estimator import ObjectPose
 from utils.image import mse
+from utils.misc import infer_device
 
 if TYPE_CHECKING:
     from processors.pose_estimator import KeypointFeatures, PoseEstimator
@@ -218,7 +218,7 @@ class RigidObject:
 
 class Scene:
     def __init__(self, segmenter: Segmenter, pose_estimator: PoseEstimator) -> None:
-        self.device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device: str = infer_device()
         self.segmenter: Segmenter | None = segmenter
         self.pose_estimator: PoseEstimator | None = pose_estimator
 

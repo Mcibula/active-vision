@@ -10,6 +10,8 @@ from kornia.feature import DeDoDe, LightGlue
 from scipy.spatial.transform import Rotation
 from torch import Tensor
 
+from utils.misc import infer_device
+
 if TYPE_CHECKING:
     from camera.realsense import Intrinsics
     from core.scene import RigidObject, Snapshot
@@ -184,7 +186,7 @@ class PoseEstimator:
         if self.dist_min < 0.0 or self.dist_max < 0.0 or self.dist_max <= self.dist_min:
             raise ValueError
 
-        self.device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device: str = infer_device()
         self.intrinsics: Intrinsics = camera_intrinsics
 
         self.detector = DeDoDe.from_pretrained(

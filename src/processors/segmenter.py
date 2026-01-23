@@ -12,6 +12,7 @@ from ultralytics import SAM, YOLO, YOLOE
 from ultralytics.utils.checks import check_imgsz
 
 from utils.image import crop_zeros, resize_imgs
+from utils.misc import infer_device
 
 if TYPE_CHECKING:
     from PIL.Image import Image
@@ -44,7 +45,7 @@ class Segmenter:
 
         self.tracking = engine != 'sam'
         self.model: Model = self.engines[engine](weights)
-        self.device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device: str = infer_device()
 
         self._results: list[Results] = []
 
