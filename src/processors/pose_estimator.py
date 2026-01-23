@@ -304,7 +304,10 @@ class PoseEstimator:
             return None
 
         if isinstance(query, np.ndarray):
-            q_crop: np.ndarray = query[qy1:qy2 + 1, qx1:qx2 + 1]
+            if query.ndim != 3 or query.shape[-1] != 3:
+                raise ValueError
+
+            q_crop: np.ndarray = query[qy1:qy2, qx1:qx2]
             q_feats: KeypointFeatures = self.compute_features(q_crop)
         else:
             q_feats = query
