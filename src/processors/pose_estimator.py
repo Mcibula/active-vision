@@ -245,7 +245,7 @@ class PoseEstimator:
         return KeypointFeatures(
             keypoints=keypoints,
             descriptors=descriptors,
-            img_size=torch.tensor(img.shape[2:]).flip(0).unsqueeze(0)
+            img_size=torch.tensor(img.shape[2:], device=self.device).flip(0).unsqueeze(0)
         )
 
     def check_similarity(
