@@ -107,7 +107,7 @@ class KeypointFeatures:
 
     @classmethod
     def empty(cls, desc_dim: int = 256) -> KeypointFeatures:
-        device = infer_device()
+        device: torch.device = infer_device()
 
         return cls(
             keypoints=torch.empty((1, 0, 2), device=device),
@@ -216,7 +216,7 @@ class PoseEstimator:
         if self.dist_min < 0.0 or self.dist_max < 0.0 or self.dist_max <= self.dist_min:
             raise ValueError
 
-        self.device: str = infer_device()
+        self.device: torch.device = infer_device()
         self.intrinsics: Intrinsics = camera_intrinsics
 
         self.detector = DeDoDe.from_pretrained(

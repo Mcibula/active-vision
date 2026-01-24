@@ -45,7 +45,7 @@ class Segmenter:
 
         self.tracking = engine != 'sam'
         self.model: Model = self.engines[engine](weights)
-        self.device: str = infer_device()
+        self.device: torch.device = infer_device()
 
         self._results: list[Results] = []
 
@@ -55,7 +55,7 @@ class Segmenter:
 
     @property
     def gpu(self) -> bool:
-        return self.device == 'cuda'
+        return self.device.type == 'cuda'
 
     def segment_all(
             self,

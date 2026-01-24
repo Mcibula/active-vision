@@ -13,6 +13,8 @@ from utils.image import mse
 from utils.misc import infer_device
 
 if TYPE_CHECKING:
+    import torch
+
     from processors.pose_estimator import KeypointFeatures, PoseEstimator
     from processors.segmenter import Segmenter, TrackRecord
 
@@ -227,7 +229,7 @@ class RigidObject:
 
 class Scene:
     def __init__(self, segmenter: Segmenter, pose_estimator: PoseEstimator) -> None:
-        self.device: str = infer_device()
+        self.device: torch.device = infer_device()
         self.segmenter: Segmenter | None = segmenter
         self.pose_estimator: PoseEstimator | None = pose_estimator
 
