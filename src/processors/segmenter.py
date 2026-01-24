@@ -64,6 +64,9 @@ class BBox:
     def __or__(self, other: BBox) -> BBox:
         return self.union(other)
 
+    def __contains__(self, other: BBox) -> bool:
+        return self.contains(other)
+
     @property
     def x1(self) -> int:
         return self._x1
@@ -131,9 +134,16 @@ class BBox:
 
         return None
 
+    def contains(self, other: BBox) -> bool:
+        return (
+            other.x1 >= self.x1
+            and other.y1 >= self.y1
+            and other.x2 <= self.x2
+            and other.y2 <= self.y2
+        )
+
     def iou(self, other: BBox) -> float:
         inter = self & other
-
         if inter is None:
             return 0.0
 
@@ -142,6 +152,17 @@ class BBox:
             return 0.0
 
         return inter.area / union_area
+
+    def iom(self, other: BBox) -> float:
+        inter = self & other
+        if inter is None:
+            return 0.0
+
+        min_area = min(self.area, other.area)
+        if min_area == 0:
+            return 0.0
+
+        return inter.area / min_area
 
 
 class Segmenter:
