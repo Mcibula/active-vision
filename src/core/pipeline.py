@@ -192,7 +192,7 @@ class PipelineController:
                 display: np.ndarray = frame.copy()
 
                 now = time.time()
-                for obj in self.scene:
+                for obj in list(self.scene):
                     if (now - obj.last_updated) > self.visibility_thresh:
                         continue
 
