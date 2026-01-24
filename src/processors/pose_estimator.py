@@ -219,10 +219,16 @@ class PoseEstimator:
         self.device: torch.device = infer_device()
         self.intrinsics: Intrinsics = camera_intrinsics
 
+        self.max_dim = 640
+        self.detector_dtype: torch.dtype = (
+            torch.float16
+            if self.device.type == 'cuda'
+            else torch.float32
+        )
         self.detector = DeDoDe.from_pretrained(
             detector_weights=detector_weights,
             descriptor_weights=descriptor_weights,
-            amp_dtype=torch.float16 if self.device == 'cuda' else torch.float32
+            amp_dtype=self.detector_dtype
         ).to(self.device)
 
         self.matcher = LightGlue(features=f'dedode{descriptor_weights[0].lower()}').to(self.device)
@@ -233,7 +239,7 @@ class PoseEstimator:
         if img.ndim not in (3, 4):
             raise ValueError
 
-        t_img = kornia.image_to_tensor(img, keepdim=False).float() / 255.0
+        t_img = kornia.image_to_tensor(img, keepdim=False).to(self.detector_dtype) / 255.0
         return t_img.to(self.device)
 
     def compute_features(self, rgb_crop: np.ndarray, n_kpts: int = 1000) -> KeypointFeatures:
