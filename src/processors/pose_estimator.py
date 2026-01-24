@@ -246,6 +246,15 @@ class PoseEstimator:
         if rgb_crop.ndim != 3 or rgb_crop.shape[-1] != 3:
             raise ValueError
 
+        h, w = rgb_crop.shape[:2]
+        scale = 1.0
+
+        if max(h, w) > self.max_dim:
+            scale = self.max_dim / max(h, w)
+            new_h = int(h * scale)
+            new_w = int(w * scale)
+            rgb_crop = cv2.resize(rgb_crop, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
         n_eff = np.count_nonzero(np.any(rgb_crop, axis=-1))
         if n_eff < 50:
             return KeypointFeatures.empty()
@@ -257,10 +266,13 @@ class PoseEstimator:
         with torch.inference_mode():
             keypoints, scores, descriptors = self.detector(img, n=n_kpts)
 
+            if scale != 1.0:
+                keypoints /= scale
+
         return KeypointFeatures(
             keypoints=keypoints,
             descriptors=descriptors,
-            img_size=torch.tensor(img.shape[2:], device=self.device).flip(0).unsqueeze(0)
+            img_size=torch.tensor([[w, h]], device=self.device)
         )
 
     def check_similarity(
