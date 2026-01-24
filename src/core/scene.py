@@ -10,7 +10,7 @@ import numpy as np
 
 from processors.pose_estimator import ObjectPose
 from processors.segmenter import BBox
-from utils.image import mse
+from utils.image import mse, sharpness
 from utils.misc import infer_device
 
 if TYPE_CHECKING:
@@ -66,17 +66,19 @@ class RigidObject:
     def __init__(self, obj_id: int) -> None:
         self.obj_id = obj_id
 
-        self._trajectory: list[ObjectPose] = []
         self._snapshots: list[Snapshot] = []
+        self._trajectory: list[ObjectPose] = []
 
         self.last_seen: BBox = BBox(0, 0, 0, 0)
         self.last_updated: float = 0.0
 
         self.max_snapshots: int = 100
-        self.dupl_history = 5
+        self.dupl_history: int = 5
+        self.snap_subset: int = 5
         self.mse_thresh: float = 600.0
         self.kpt_thresh: int = 30
         self.eff_thresh: int = 600
+        self.pose_interval: float = 0.2
 
     def __repr__(self) -> str:
         return (
@@ -124,59 +126,65 @@ class RigidObject:
         ):
             raise ValueError
 
-        for idx in range(len(snapshots)):
-            rgb: np.ndarray = snapshots[idx]
-            mask: np.ndarray = masks[idx]
-            depth_map: np.ndarray = depth_maps[idx]
-            bbox: BBox = bboxes[idx]
+        self.last_seen = bboxes[-1]
 
-            n_eff = np.count_nonzero(mask)
-            if n_eff < self.eff_thresh:
-                continue
+        best_idx = self._best_snapshot(snapshots, masks)
+        if best_idx == -1:
+            return
 
-            feats: KeypointFeatures = feat_extractor.compute_features(rgb)
+        now = time.time()
 
-            if self.num_snapshots > 0:
-                pose: ObjectPose = feat_extractor.estimate_pose(
-                    query=feats,
-                    query_bbox=bbox,
-                    ref_obj=self
-                )
+        rgb: np.ndarray = snapshots[best_idx]
+        mask: np.ndarray = masks[best_idx]
+        depth_map: np.ndarray = depth_maps[best_idx]
+        bbox: BBox = bboxes[best_idx]
 
-                self.add_pose(
-                    pose
-                    if pose is not None
-                    else ObjectPose.lost()
-                )
-                self.last_updated = time.time()
+        if self.num_snapshots > 0 and (now - self.last_updated) < self.pose_interval:
+            return
 
-            if self.num_snapshots >= self.max_snapshots:
-                continue
+        feats: KeypointFeatures = feat_extractor.compute_features(rgb)
 
-            if self.num_snapshots > 0:
-                if self._pixel_duplicate(rgb):
-                    continue
-
-                feat_sim = feat_extractor.check_similarity(
-                    new=feats,
-                    refs=[s.features for s in self._snapshots],
-                    match_thresh=self.kpt_thresh
-                )
-
-                if feat_sim:
-                    continue
-
-            self._snapshots.append(
-                Snapshot(
-                    idx=self.num_snapshots,
-                    rgb=rgb,
-                    mask=mask,
-                    depth=depth_map,
-                    bbox=bbox,
-                    features=feats
-                )
+        if self.num_snapshots > 0:
+            pose: ObjectPose = feat_extractor.estimate_pose(
+                query=feats,
+                query_bbox=bbox,
+                ref_obj=self
             )
-            self.last_updated = time.time()
+
+            self.add_pose(
+                pose
+                if pose is not None
+                else ObjectPose.lost()
+            )
+            self.last_updated = now
+
+        if self.num_snapshots >= self.max_snapshots:
+            return
+
+        if self.num_snapshots > 0:
+            if self._pixel_duplicate(rgb):
+                return
+
+            feat_sim = feat_extractor.check_similarity(
+                new=feats,
+                refs=[s.features for s in self._snapshots],
+                match_thresh=self.kpt_thresh
+            )
+
+            if feat_sim:
+                return
+
+        self._snapshots.append(
+            Snapshot(
+                idx=self.num_snapshots,
+                rgb=rgb,
+                mask=mask,
+                depth=depth_map,
+                bbox=bbox,
+                features=feats
+            )
+        )
+        self.last_updated = now
 
     def _pixel_duplicate(self, rgb: np.ndarray) -> bool:
         chw_snap = rgb.transpose(2, 0, 1)
@@ -189,6 +197,32 @@ class RigidObject:
                 return True
 
         return False
+
+    def _best_snapshot(self, rgbs: list[np.ndarray], masks: list[np.ndarray]) -> int:
+        if len(rgbs) != len(masks) or len(rgbs) == 0:
+            raise ValueError
+
+        sub_rng = range(max(0, len(rgbs) - self.snap_subset), len(rgbs))
+        best_score = 0
+        best_idx = -1
+
+        for idx in sub_rng:
+            rgb: np.ndarray = rgbs[idx]
+            mask: np.ndarray = masks[idx]
+
+            n_eff = np.count_nonzero(mask)
+            if n_eff < self.eff_thresh:
+                continue
+
+            lvar = sharpness(rgb)
+            recency = idx * 10
+            score = lvar + recency
+
+            if score > best_score:
+                best_score = score
+                best_idx = idx
+
+        return best_idx
 
     def show_snapshots(self, n: int = 1, ids: list[int] | None = None) -> None:
         if ids is not None:

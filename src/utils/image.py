@@ -4,6 +4,7 @@ Image manipulation utilities
 
 from typing import Literal
 
+import cv2
 import numpy as np
 import torch
 import torchvision.transforms.v2.functional as tvf
@@ -211,3 +212,16 @@ def mse(img1: np.ndarray, img2: np.ndarray) -> float:
         (img1.astype(np.float32) - img2.astype(np.float32)) ** 2,
         dtype=np.float32
     )
+
+
+def sharpness(img: np.ndarray) -> float:
+    if img.ndim not in (2, 3):
+        raise ValueError
+
+    if img.size == 0:
+        return 0.0
+
+    if img.ndim == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+    return cv2.Laplacian(img, ddepth=cv2.CV_64F).var()
