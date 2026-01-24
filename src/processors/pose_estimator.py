@@ -15,6 +15,7 @@ from utils.misc import infer_device
 if TYPE_CHECKING:
     from camera.realsense import Intrinsics
     from core.scene import RigidObject, Snapshot
+    from processors.segmenter import BBox
 
 
 class KeypointFeatures:
@@ -297,7 +298,7 @@ class PoseEstimator:
     def estimate_pose(
             self,
             query: np.ndarray | KeypointFeatures,
-            query_bbox: tuple[int, int, int, int],
+            query_bbox: BBox,
             ref_obj: RigidObject,
             n_refs: int = -1
     ) -> ObjectPose | None:
@@ -308,9 +309,7 @@ class PoseEstimator:
             return None
 
         qx1, qy1, qx2, qy2 = query_bbox
-
-        # Sanity check the bbox
-        if (qx2 - qx1) < 10 or (qy2 - qy1) < 10:
+        if query_bbox.w < 10 or query_bbox.h < 10:
             return None
 
         if isinstance(query, np.ndarray):

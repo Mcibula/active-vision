@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from processors.pose_estimator import ObjectPose
+from processors.segmenter import BBox
 from utils.image import mse
 from utils.misc import infer_device
 
@@ -26,7 +27,7 @@ class Snapshot:
             rgb: np.ndarray,
             mask: np.ndarray,
             depth: np.ndarray,
-            bbox: tuple[float, float, float, float],
+            bbox: BBox,
             features: KeypointFeatures
     ) -> None:
         self._idx = idx
@@ -53,7 +54,7 @@ class Snapshot:
         return self._depth
 
     @property
-    def bbox(self) -> tuple[float, float, float, float]:
+    def bbox(self) -> BBox:
         return self._bbox
 
     @property
@@ -113,7 +114,7 @@ class RigidObject:
             snapshots: list[np.ndarray],
             masks: list[np.ndarray],
             depth_maps: list[np.ndarray],
-            bboxes: list[tuple[int, int, int, int]],
+            bboxes: list[BBox],
             feat_extractor: PoseEstimator
     ) -> None:
         if (
@@ -126,7 +127,7 @@ class RigidObject:
             rgb: np.ndarray = snapshots[idx]
             mask: np.ndarray = masks[idx]
             depth_map: np.ndarray = depth_maps[idx]
-            bbox: tuple[int, int, int, int] = bboxes[idx]
+            bbox: BBox = bboxes[idx]
 
             n_eff = np.count_nonzero(mask)
             if n_eff < self.eff_thresh:

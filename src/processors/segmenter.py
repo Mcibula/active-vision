@@ -24,7 +24,7 @@ logging.getLogger('ultralytics').setLevel(logging.ERROR)
 
 @dataclass
 class TrackRecord:
-    xyxy: list[tuple[int, int, int, int]]
+    xyxy: list[BBox]
     masks: list[np.ndarray]
     snapshots: list[np.ndarray]
     frame_ids: list[int]
@@ -290,7 +290,7 @@ class Segmenter:
                 y1 = max(0, int(y1))
                 x2 = min(correct_w, int(x2))
                 y2 = min(correct_h, int(y2))
-                record.xyxy.append((x1, y1, x2, y2))
+                record.xyxy.append(BBox(x1, y1, x2, y2))
                 record.frame_ids.append(frame_idx)
 
                 # HW mask, HWC snapshot
