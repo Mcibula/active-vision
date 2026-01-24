@@ -146,6 +146,7 @@ class RigidObject:
                     if pose is not None
                     else ObjectPose.lost()
                 )
+                self.last_updated = time.time()
 
             if self.num_snapshots >= self.max_snapshots:
                 continue
@@ -173,6 +174,7 @@ class RigidObject:
                     features=feats
                 )
             )
+            self.last_updated = time.time()
 
     def _pixel_duplicate(self, rgb: np.ndarray) -> bool:
         chw_snap = rgb.transpose(2, 0, 1)
