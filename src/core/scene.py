@@ -69,6 +69,7 @@ class RigidObject:
         self._trajectory: list[ObjectPose] = []
         self._snapshots: list[Snapshot] = []
 
+        self.last_seen: BBox = BBox(0, 0, 0, 0)
         self.last_updated: float = 0.0
 
         self.max_snapshots: int = 100
@@ -239,6 +240,10 @@ class Scene:
         self.frame_count: int = 0
         self.objects: dict[int, RigidObject] = {}
 
+        self.temp_thresh: float = 2.0
+        self.iou_thresh: float = 0.5
+        self.iom_thresh: float = 0.9
+
     def __repr__(self) -> str:
         return f'<Scene with {self.num_objects} objects>'
 
@@ -273,9 +278,26 @@ class Scene:
 
         record: dict[int, TrackRecord] = self.segmenter.track(list(rgb_frames))
 
+        now = time.time()
         for obj_id, obj_record in record.items():
             if not obj_record.snapshots:
                 continue
+
+            cur_bbox: BBox = obj_record.xyxy[-1]
+
+            if obj_id not in self.objects:
+                best_id = -1
+
+                for ex_id, ex_obj in self.objects.items():
+                    if (now - ex_obj.last_updated) < self.temp_thresh and ex_id not in record:
+                        iou = cur_bbox.iou(ex_obj.last_seen)
+                        iom = cur_bbox.iom(ex_obj.last_seen)
+
+                        if iou > self.iou_thresh or iom > self.iom_thresh:
+                            best_id = ex_id
+
+                if best_id != -1:
+                    obj_id = best_id
 
             if obj_id not in self.objects:
                 self.objects[obj_id] = RigidObject(obj_id)
