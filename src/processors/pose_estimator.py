@@ -294,6 +294,7 @@ class PoseEstimator:
             img_size=torch.tensor([[w, h]], device=self.device)
         )
 
+    @timer('PoseEstimator.check_similarity')
     def check_similarity(
             self,
             new: KeypointFeatures,
@@ -354,7 +355,10 @@ class PoseEstimator:
         best_score: int = 0
         best_matches: Tensor | None = None
 
-        with torch.inference_mode():
+        with (
+            torch.inference_mode(),
+            timer('PoseEstimator.estimate_pose.matching', self.logger, self.monitor)
+        ):
             for idx, ref_feat in enumerate(ref_feats):
                 matches_out = self.matcher({
                     'image0': dict(ref_feat),
@@ -391,62 +395,64 @@ class PoseEstimator:
         if len(ref_kpts) < self.match_thresh:
             return None
 
-        q_kpts_global = q_kpts.copy()
-        q_kpts_global[:, 0] += qx1
-        q_kpts_global[:, 1] += qy1
+        with timer('PoseEstimation.estimate_pose.geometry', self.logger, self.monitor):
+            q_kpts_global = q_kpts.copy()
+            q_kpts_global[:, 0] += qx1
+            q_kpts_global[:, 1] += qy1
 
-        sx1, sy1, *_ = best_snap.bbox
-        depth_map = best_snap.depth.astype(np.float32) / 1000.0
-        sh, sw = depth_map.shape
+            sx1, sy1, *_ = best_snap.bbox
+            depth_map = best_snap.depth.astype(np.float32) / 1000.0
+            sh, sw = depth_map.shape
 
-        fx, fy = self.intrinsics.fx, self.intrinsics.fy
-        cx, cy = self.intrinsics.ppx, self.intrinsics.ppy
+            fx, fy = self.intrinsics.fx, self.intrinsics.fy
+            cx, cy = self.intrinsics.ppx, self.intrinsics.ppy
 
-        obj_points = []
-        img_points = []
+            obj_points = []
+            img_points = []
 
-        for idx in range(len(ref_kpts)):
-            u, v = map(int, ref_kpts[idx])
+            for idx in range(len(ref_kpts)):
+                u, v = map(int, ref_kpts[idx])
 
-            if not (0 <= u < sw and 0 <= v < sh):
-                continue
+                if not (0 <= u < sw and 0 <= v < sh):
+                    continue
 
-            z = depth_map[v, u]
+                z = depth_map[v, u]
 
-            if z <= self.dist_min or z >= self.dist_max:
-                continue
+                if z <= self.dist_min or z >= self.dist_max:
+                    continue
 
-            u_global = u + sx1
-            v_global = v + sy1
+                u_global = u + sx1
+                v_global = v + sy1
 
-            x = (u_global - cx) * z / fx
-            y = (v_global - cy) * z / fy
+                x = (u_global - cx) * z / fx
+                y = (v_global - cy) * z / fy
 
-            obj_points.append([x, y, z])
-            img_points.append(q_kpts_global[idx])
+                obj_points.append([x, y, z])
+                img_points.append(q_kpts_global[idx])
 
-        obj_points = np.array(obj_points, dtype=np.float32)
-        img_points = np.array(img_points, dtype=np.float32)
+            obj_points = np.array(obj_points, dtype=np.float32)
+            img_points = np.array(img_points, dtype=np.float32)
 
-        if len(obj_points) < 4:
-            return None
+            if len(obj_points) < 4:
+                return None
 
-        centroid = np.mean(obj_points, axis=0)
-        obj_points -= centroid
+            centroid = np.mean(obj_points, axis=0)
+            obj_points -= centroid
 
-        success, rvec, tvec, _ = cv2.solvePnPRansac(
-            objectPoints=obj_points,
-            imagePoints=img_points,
-            cameraMatrix=self.intrinsics.K,
-            distCoeffs=self.intrinsics.coeffs,
-            iterationsCount=100,
-            reprojectionError=6.0,
-            confidence=0.99,
-            flags=cv2.SOLVEPNP_ITERATIVE
-        )
+        with timer('PoseEstimator.estimate_pose.pnp', self.logger, self.monitor):
+            success, rvec, tvec, _ = cv2.solvePnPRansac(
+                objectPoints=obj_points,
+                imagePoints=img_points,
+                cameraMatrix=self.intrinsics.K,
+                distCoeffs=self.intrinsics.coeffs,
+                iterationsCount=100,
+                reprojectionError=6.0,
+                confidence=0.99,
+                flags=cv2.SOLVEPNP_ITERATIVE
+            )
 
-        if not success:
-            return None
+            if not success:
+                return None
 
         R, _ = cv2.Rodrigues(rvec)
         pose_6d = np.eye(4)
