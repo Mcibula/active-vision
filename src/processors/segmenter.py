@@ -232,100 +232,104 @@ class Segmenter:
         frame_h, frame_w, frame_c = src[0].shape
 
         with torch.no_grad():
-            try:
-                # Convert uint8 RGB NHWC to float32 RGB NCHW
-                frames: Tensor = (
-                        torch.from_numpy(np.asarray(src))
-                             .permute(0, 3, 1, 2)
-                             .float()
-                             .to(self.device) / 255
-                )
-            except ValueError as e:
-                raise ValueError('All the source frames must have the same shape.') from e
-
-            correct_h, correct_w = check_imgsz(
-                imgsz=[frame_h, frame_w],
-                stride=32
-            )
-            model_in = (
-                frames
-                if correct_h == frame_h and correct_w == frame_w
-                else resize_imgs(
-                    src=frames,
-                    to_shape=(correct_h, correct_w),
-                    dim_order='nchw',
-                    stretch=False,
-                    padding_value=0
-                )
-            )
-
-            self._results: list[Results] = self.model.track(
-                model_in,
-                stream=False,
-                persist=True,
-                verbose=False
-            )
-
-        objects: dict[int, TrackRecord] = {}
-        for frame_idx, r in enumerate(self._results):
-            if r.boxes.id is None:
-                continue
-
-            obj_ids: list[float] = r.boxes.id.cpu().tolist()
-            n_objs: int = len(obj_ids)
-
-            xyxy: np.ndarray = r.boxes.xyxy.cpu().numpy()
-
-            if n_objs == 0:
-                continue
-
-            # CHW frame, O1HW masks
-            frame: Tensor = frames[frame_idx] * 255
-            upscaled_masks: Tensor = resize_imgs(
-                src=r.masks.data.unsqueeze(1),
-                to_shape=(frame_h, frame_w),
-                dim_order='nchw',
-                stretch=True
-            )
-
-            # OCHW masked frames, OHW masks
-            masked_frames: Tensor = upscaled_masks * frame.expand(n_objs, -1, -1, -1)
-            upscaled_masks: Tensor = upscaled_masks.squeeze(1)
-
-            for idx, obj_id in enumerate(obj_ids):
-                obj_id: int = int(obj_id)
-
-                if obj_id not in objects:
-                    objects[obj_id] = TrackRecord(
-                        xyxy=[],
-                        masks=[],
-                        snapshots=[],
-                        frame_ids=[]
+            with timer('Segmenter.track.preprocess', self.logger, self.monitor):
+                try:
+                    # Convert uint8 RGB NHWC to float32 RGB NCHW
+                    frames: Tensor = (
+                            torch.from_numpy(np.asarray(src))
+                                 .permute(0, 3, 1, 2)
+                                 .float()
+                                 .to(self.device) / 255
                     )
+                except ValueError as e:
+                    raise ValueError('All the source frames must have the same shape.') from e
 
-                record: TrackRecord = objects[obj_id]
+                correct_h, correct_w = check_imgsz(
+                    imgsz=[frame_h, frame_w],
+                    stride=32
+                )
+                model_in = (
+                    frames
+                    if correct_h == frame_h and correct_w == frame_w
+                    else resize_imgs(
+                        src=frames,
+                        to_shape=(correct_h, correct_w),
+                        dim_order='nchw',
+                        stretch=False,
+                        padding_value=0
+                    )
+                )
 
-                x1, y1, x2, y2 = xyxy[idx]
-                x1 = max(0, int(x1))
-                y1 = max(0, int(y1))
-                x2 = min(correct_w, int(x2))
-                y2 = min(correct_h, int(y2))
-                record.xyxy.append(BBox(x1, y1, x2, y2))
-                record.frame_ids.append(frame_idx)
+            with timer('Segmenter.track.inference', self.logger, self.monitor):
+                self._results: list[Results] = self.model.track(
+                    model_in,
+                    stream=False,
+                    persist=True,
+                    verbose=False
+                )
 
-                # HW mask, HWC snapshot
-                cropped_mask = crop_zeros(upscaled_masks[idx])
-                cropped_snapshot = crop_zeros(masked_frames[idx].permute(1, 2, 0))
-
-                # Blank frame or blank mask
-                if cropped_snapshot is None or cropped_mask is None:
+        with timer('Segmenter.track.postprocess', self.logger, self.monitor):
+            objects: dict[int, TrackRecord] = {}
+            for frame_idx, r in enumerate(self._results):
+                if r.boxes.id is None:
                     continue
 
-                record.masks.append(cropped_mask.cpu().numpy().astype(np.uint8))
-                record.snapshots.append(cropped_snapshot.cpu().numpy().astype(np.uint8))
+                obj_ids: list[float] = r.boxes.id.cpu().tolist()
+                n_objs: int = len(obj_ids)
+
+                xyxy: np.ndarray = r.boxes.xyxy.cpu().numpy()
+
+                if n_objs == 0:
+                    continue
+
+                # CHW frame, O1HW masks
+                frame: Tensor = frames[frame_idx] * 255
+                upscaled_masks: Tensor = resize_imgs(
+                    src=r.masks.data.unsqueeze(1),
+                    to_shape=(frame_h, frame_w),
+                    dim_order='nchw',
+                    stretch=True
+                )
+
+                # OCHW masked frames, OHW masks
+                masked_frames: Tensor = upscaled_masks * frame.expand(n_objs, -1, -1, -1)
+                upscaled_masks: Tensor = upscaled_masks.squeeze(1)
+
+                for idx, obj_id in enumerate(obj_ids):
+                    obj_id: int = int(obj_id)
+
+                    if obj_id not in objects:
+                        objects[obj_id] = TrackRecord(
+                            xyxy=[],
+                            masks=[],
+                            snapshots=[],
+                            frame_ids=[]
+                        )
+
+                    record: TrackRecord = objects[obj_id]
+
+                    x1, y1, x2, y2 = xyxy[idx]
+                    x1 = max(0, int(x1))
+                    y1 = max(0, int(y1))
+                    x2 = min(correct_w, int(x2))
+                    y2 = min(correct_h, int(y2))
+                    record.xyxy.append(BBox(x1, y1, x2, y2))
+                    record.frame_ids.append(frame_idx)
+
+                    # HW mask, HWC snapshot
+                    cropped_mask = crop_zeros(upscaled_masks[idx])
+                    cropped_snapshot = crop_zeros(masked_frames[idx].permute(1, 2, 0))
+
+                    # Blank frame or blank mask
+                    if cropped_snapshot is None or cropped_mask is None:
+                        continue
+
+                    record.masks.append(cropped_mask.cpu().numpy().astype(np.uint8))
+                    record.snapshots.append(cropped_snapshot.cpu().numpy().astype(np.uint8))
 
         return objects
 
+    @timer('Segmenter.last_annotated_frames')
     def last_annotated_frames(
             self,
             conf: bool = False,
