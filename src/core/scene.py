@@ -140,6 +140,7 @@ class RigidObject:
         bbox: BBox = bboxes[best_idx]
 
         if self.num_snapshots > 0 and (now - self.last_updated) < self.pose_interval:
+            self._propagate_pose(bbox, feat_extractor)
             return
 
         feats: KeypointFeatures = feat_extractor.compute_features(rgb)
@@ -227,6 +228,45 @@ class RigidObject:
                 best_idx = idx
 
         return best_idx
+
+    def _propagate_pose(self, new_bbox: BBox, feat_extractor: PoseEstimator) -> None:
+        if self.num_poses == 0 or self.last_seen.is_null:
+            self.last_seen = new_bbox
+            return
+
+        last_pose = self._trajectory[-1]
+        if last_pose.is_lost:
+            self.last_seen = new_bbox
+            return
+
+        old_cx, old_cy = self.last_seen.centroid
+        new_cx, new_cy = new_bbox.centroid
+
+        dx_px = new_cx - old_cx
+        dy_px = new_cy - old_cy
+
+        cur_z = last_pose.z
+        if cur_z <= 0.1:
+            self.last_seen = new_bbox
+            return
+
+        fx = feat_extractor.intrinsics.fx
+        fy = feat_extractor.intrinsics.fy
+
+        dx_m = (dx_px * cur_z) / fx
+        dy_m = (dy_px * cur_z) / fy
+
+        new_x = last_pose.x + dx_m
+        new_y = last_pose.y + dy_m
+
+        self.add_pose(
+            ObjectPose(
+                new_x, new_y, cur_z,
+                *last_pose.rot,
+                is_valid=True
+            )
+        )
+        self.last_seen = new_bbox
 
     def show_snapshots(self, n: int = 1, ids: list[int] | None = None) -> None:
         if ids is not None:
