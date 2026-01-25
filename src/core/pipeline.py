@@ -13,7 +13,7 @@ import numpy as np
 import pyrealsense2 as rs
 from scipy.spatial.transform import Rotation
 
-from utils.visualization import BLACK, BLUE, CYAN, GREEN, RED, YELLOW
+from utils.visualization import Color
 
 if TYPE_CHECKING:
     from camera import RealsenseCamera
@@ -219,9 +219,9 @@ class PipelineController:
         backlog = self.capture_buffer.qsize()
 
         status_color = (
-            RED if backlog > 50
-            else YELLOW if backlog > 10
-            else GREEN
+            Color.RED if backlog > 50
+            else Color.YELLOW if backlog > 10
+            else Color.GREEN
         )
 
         info = (
@@ -235,7 +235,7 @@ class PipelineController:
         )
 
         colors = {
-            'mode': CYAN,
+            'mode': Color.CYAN,
             'backlog': status_color
         }
 
@@ -244,7 +244,7 @@ class PipelineController:
             cv2.putText(
                 img=frame, text=line, org=(10, y),
                 fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.6, thickness=2,
-                color=colors.get(line.split(':')[0].lower(), BLACK)
+                color=colors.get(line.split(':')[0].lower(), Color.BLACK)
             )
             y += 25
 
@@ -278,7 +278,7 @@ class PipelineController:
             img_points = img_points.astype(int).reshape(-1, 2)
 
             origin = tuple(img_points[0])
-            for idx, clr in enumerate((RED, GREEN, BLUE)):
+            for idx, clr in enumerate((Color.RED, Color.GREEN, Color.BLUE)):
                 cv2.line(
                     img=frame,
                     pt1=origin, pt2=tuple(img_points[idx + 1]),
@@ -288,8 +288,8 @@ class PipelineController:
             label = f'#{obj.obj_id} {pose.z:.3f}m'
             cv2.putText(
                 img=frame, text=label, org=(origin[0], origin[1] - 10),
-                fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.2, thickness=2,
-                color=BLACK
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.5, thickness=2,
+                color=Color.BLACK
             )
         except Exception as e:
             pass
