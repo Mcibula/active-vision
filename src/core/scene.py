@@ -367,34 +367,36 @@ class Scene:
 
             cur_bbox: BBox = obj_record.xyxy[-1]
 
-            if obj_id not in self.objects:
-                best_id = -1
+            with timer('Scene.read_frames.obj_id', self.logger, self.monitor):
+                if obj_id not in self.objects:
+                    best_id = -1
 
-                for ex_id, ex_obj in self.objects.items():
-                    if (now - ex_obj.last_updated) < self.temp_thresh and ex_id not in record:
-                        iou = cur_bbox.iou(ex_obj.last_seen)
-                        iom = cur_bbox.iom(ex_obj.last_seen)
+                    for ex_id, ex_obj in self.objects.items():
+                        if (now - ex_obj.last_updated) < self.temp_thresh and ex_id not in record:
+                            iou = cur_bbox.iou(ex_obj.last_seen)
+                            iom = cur_bbox.iom(ex_obj.last_seen)
 
-                        if iou > self.iou_thresh or iom > self.iom_thresh:
-                            best_id = ex_id
+                            if iou > self.iou_thresh or iom > self.iom_thresh:
+                                best_id = ex_id
 
-                if best_id != -1:
-                    obj_id = best_id
+                    if best_id != -1:
+                        obj_id = best_id
 
             if obj_id not in self.objects:
                 self.objects[obj_id] = RigidObject(obj_id)
 
-            obj: RigidObject = self.objects[obj_id]
-            obj.register_observations(
-                snapshots=obj_record.snapshots,
-                masks=obj_record.masks,
-                depth_maps=[
-                    d_frames[obj_record.frame_ids[xyxy_id]][y1:y2 + 1, x1:x2 + 1]
-                    for xyxy_id, (x1, y1, x2, y2) in enumerate(obj_record.xyxy)
-                ],
-                bboxes=obj_record.xyxy,
-                feat_extractor=self.pose_estimator
-            )
+            with timer('Scene.read_frames.register', self.logger, self.monitor):
+                obj: RigidObject = self.objects[obj_id]
+                obj.register_observations(
+                    snapshots=obj_record.snapshots,
+                    masks=obj_record.masks,
+                    depth_maps=[
+                        d_frames[obj_record.frame_ids[xyxy_id]][y1:y2 + 1, x1:x2 + 1]
+                        for xyxy_id, (x1, y1, x2, y2) in enumerate(obj_record.xyxy)
+                    ],
+                    bboxes=obj_record.xyxy,
+                    feat_extractor=self.pose_estimator
+                )
 
     def save(self, path: str, store_models: bool = False) -> None:
         store: dict[str, ...] = {
