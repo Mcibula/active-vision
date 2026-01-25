@@ -222,7 +222,9 @@ class PoseEstimator:
         self.device: torch.device = infer_device()
         self.intrinsics: Intrinsics = camera_intrinsics
 
-        self.max_dim = 640
+        torch.backends.cudnn.benchmark = True
+
+        self.max_dim: int = 448
         self.detector_dtype: torch.dtype = (
             torch.float16
             if self.device.type == 'cuda'
@@ -242,39 +244,49 @@ class PoseEstimator:
         self.monitor: PerformanceMonitor = PerformanceMonitor()
         self.logger.info('PoseEstimator initialized')
 
-    def _preprocess(self, img: np.ndarray) -> Tensor:
-        if img.ndim not in (3, 4):
-            raise ValueError
-
-        t_img = kornia.image_to_tensor(img, keepdim=False).to(self.detector_dtype) / 255.0
-        return t_img.to(self.device)
-
-    def compute_features(self, rgb_crop: np.ndarray, n_kpts: int = 1000) -> KeypointFeatures:
+    def compute_features(self, rgb_crop: np.ndarray, n_kpts: int = 500) -> KeypointFeatures:
         if rgb_crop.ndim != 3 or rgb_crop.shape[-1] != 3:
             raise ValueError
 
-        h, w = rgb_crop.shape[:2]
-        scale = 1.0
+        with timer('PoseEstimator.compute_features.preprocess', self.logger, self.monitor):
+            h, w = rgb_crop.shape[:2]
 
-        if max(h, w) > self.max_dim:
             scale = self.max_dim / max(h, w)
             new_h = int(h * scale)
             new_w = int(w * scale)
+
             rgb_crop = cv2.resize(rgb_crop, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            canvas = np.zeros((self.max_dim, self.max_dim, 3), dtype=np.uint8)
+            canvas[:new_h, :new_w] = rgb_crop
 
-        n_eff = np.count_nonzero(np.any(rgb_crop, axis=-1))
-        if n_eff < 50:
-            return KeypointFeatures.empty()
+            img: Tensor = (
+                    kornia
+                    .image_to_tensor(canvas, keepdim=False)
+                    .to(self.detector_dtype) / 255.0
+            ).to(self.device)
 
-        n_kpts = min(n_kpts, n_eff)
-
-        img: Tensor = self._preprocess(rgb_crop)
-
-        with torch.inference_mode():
+        with (
+            torch.inference_mode(),
+            timer('PoseEstimator.compute_features.inference', self.logger, self.monitor)
+        ):
             keypoints, scores, descriptors = self.detector(img, n=n_kpts)
+
+            mask_x = keypoints[..., 0] < new_w
+            mask_y = keypoints[..., 1] < new_h
+            valid_mask = mask_x & mask_y
+            valid_indices = valid_mask[0]
+
+            keypoints = keypoints[:, valid_indices, :]
+            descriptors = descriptors[:, valid_indices, :]
+
+            keypoints[..., 0].clamp_(0, new_w - 1)
+            keypoints[..., 1].clamp_(0, new_h - 1)
 
             if scale != 1.0:
                 keypoints /= scale
+
+            keypoints[..., 0].clamp_(0, w - 1)
+            keypoints[..., 1].clamp_(0, h - 1)
 
         return KeypointFeatures(
             keypoints=keypoints,
