@@ -14,7 +14,7 @@ import numpy as np
 import pyrealsense2 as rs
 from scipy.spatial.transform import Rotation
 
-from utils.logger import PerformanceMonitor, get_logger
+from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.visualization import Color
 
 if TYPE_CHECKING:
@@ -118,7 +118,7 @@ class PipelineController:
         self.logger.info('Starting camera stream...')
 
         self.camera.start_streaming()
-        self.camera.warmup()
+        self.camera.warmup(t=4.0)
 
         num_total = 0
         num_frames = 0
@@ -253,6 +253,7 @@ class PipelineController:
                     else 'live'
                 )
 
+    @timer('PipelineController._draw_hud')
     def _draw_hud(self, frame: np.ndarray) -> None:
         backlog = self.capture_buffer.qsize()
 
@@ -286,6 +287,7 @@ class PipelineController:
             )
             y += 25
 
+    @timer('PipelineController._draw_pose')
     def _draw_pose(self, frame: np.ndarray, obj: RigidObject) -> None:
         pose: ObjectPose = obj.pose
 
