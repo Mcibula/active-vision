@@ -71,7 +71,7 @@ class RigidObject:
         self._snapshots: list[Snapshot] = []
         self._trajectory: list[ObjectPose] = []
 
-        self.last_seen: BBox = BBox(0, 0, 0, 0)
+        self.last_seen: BBox = BBox.null()
         self.last_updated: float = 0.0
 
         self.max_snapshots: int = 100
@@ -128,8 +128,6 @@ class RigidObject:
         ):
             raise ValueError
 
-        self.last_seen = bboxes[-1]
-
         best_idx = self._best_snapshot(snapshots, masks)
         if best_idx == -1:
             return
@@ -159,6 +157,7 @@ class RigidObject:
                 else ObjectPose.lost()
             )
             self.last_updated = now
+            self.last_seen = bbox
 
         if self.num_snapshots >= self.max_snapshots:
             return
@@ -187,6 +186,9 @@ class RigidObject:
             )
         )
         self.last_updated = now
+
+        if self.last_seen.is_null:
+            self.last_seen = bbox
 
     def _pixel_duplicate(self, rgb: np.ndarray) -> bool:
         chw_snap = rgb.transpose(2, 0, 1)

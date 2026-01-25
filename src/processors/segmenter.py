@@ -165,6 +165,21 @@ class BBox:
 
         return inter.area / min_area
 
+    @classmethod
+    def null(cls) -> BBox:
+        return BBox(0, 0, 0, 0)
+
+    @property
+    def is_null(self) -> bool:
+        return self == BBox.null()
+
+    @property
+    def centroid(self) -> tuple[int, int]:
+        cx = (self.x1 + self.x2) // 2
+        cy = (self.y1 + self.y2) // 2
+
+        return cx, cy
+
 
 class Segmenter:
     def __init__(self, engine: str, weights: str) -> None:
