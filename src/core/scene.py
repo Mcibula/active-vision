@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 import time
 from typing import TYPE_CHECKING, Iterator
@@ -11,6 +12,7 @@ import numpy as np
 from processors.pose_estimator import ObjectPose
 from processors.segmenter import BBox
 from utils.image import mse, sharpness
+from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
 
 if TYPE_CHECKING:
@@ -277,6 +279,10 @@ class Scene:
         self.temp_thresh: float = 2.0
         self.iou_thresh: float = 0.5
         self.iom_thresh: float = 0.9
+
+        self.logger: logging.Logger = get_logger('Scene', level=logging.INFO)
+        self.monitor: PerformanceMonitor = PerformanceMonitor()
+        self.logger.info('Scene initialized')
 
     def __repr__(self) -> str:
         return f'<Scene with {self.num_objects} objects>'

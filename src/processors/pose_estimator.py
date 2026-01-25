@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Iterator
 
 import cv2
@@ -10,6 +11,7 @@ from kornia.feature import DeDoDe, LightGlue
 from scipy.spatial.transform import Rotation
 from torch import Tensor
 
+from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
 
 if TYPE_CHECKING:
@@ -235,6 +237,10 @@ class PoseEstimator:
         self.matcher = LightGlue(features=f'dedode{descriptor_weights[0].lower()}').to(self.device)
         self.score_thresh: float = score_thresh
         self.match_thresh: int = match_thresh
+
+        self.logger: logging.Logger = get_logger('PoseEstimator', level=logging.INFO)
+        self.monitor: PerformanceMonitor = PerformanceMonitor()
+        self.logger.info('PoseEstimator initialized')
 
     def _preprocess(self, img: np.ndarray) -> Tensor:
         if img.ndim not in (3, 4):

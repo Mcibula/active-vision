@@ -12,6 +12,7 @@ from ultralytics import SAM, YOLO, YOLOE
 from ultralytics.utils.checks import check_imgsz
 
 from utils.image import crop_zeros, resize_imgs
+from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
 
 if TYPE_CHECKING:
@@ -183,6 +184,10 @@ class Segmenter:
         self.device: torch.device = infer_device()
 
         self._results: list[Results] = []
+
+        self.logger: logging.Logger = get_logger('Segmenter', level=logging.INFO)
+        self.monitor: PerformanceMonitor = PerformanceMonitor()
+        self.logger.info('Segmenter initialized')
 
     @property
     def engine_type(self) -> str:

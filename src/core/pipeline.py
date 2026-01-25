@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import queue
 import signal
 import threading
@@ -13,6 +14,7 @@ import numpy as np
 import pyrealsense2 as rs
 from scipy.spatial.transform import Rotation
 
+from utils.logger import PerformanceMonitor, get_logger
 from utils.visualization import Color
 
 if TYPE_CHECKING:
@@ -62,9 +64,25 @@ class PipelineController:
         self.process_every: int = process_every
         self.visibility_thresh: float = 0.5
 
+        self.logger: logging.Logger = get_logger('PipelineController', level=logging.INFO)
+        self.monitor: PerformanceMonitor = PerformanceMonitor()
+
+        self.scene.logger = self.logger
+        self.scene.monitor = self.monitor
+        self.scene.segmenter.logger = self.logger
+        self.scene.segmenter.monitor = self.monitor
+        self.scene.pose_estimator.logger = self.logger
+        self.scene.pose_estimator.monitor = self.monitor
+
+        self.logger.info('PipelineController initialized')
+
+
     def run(self) -> None:
         signal.signal(signal.SIGINT, lambda *_: self.shutdown.set())
 
+        self.warmup()
+
+        self.logger.info('Starting threads...')
         t_cam = threading.Thread(target=self._camera_loop, daemon=True)
         t_proc = threading.Thread(target=self._processing_loop, daemon=True)
 
@@ -82,6 +100,8 @@ class PipelineController:
             cv2.destroyAllWindows()
 
     def _camera_loop(self) -> None:
+        self.logger.info('Starting camera stream...')
+
         self.camera.start_streaming()
         self.camera.warmup()
 
@@ -123,9 +143,11 @@ class PipelineController:
                     num_dropped = 0
                     t0 = time.time()
 
+                self.monitor.log_periodically(self.logger)
                 time.sleep(0)
 
         finally:
+            self.logger.info('Stopping camera stream...')
             self.camera.stop_streaming()
 
     def _processing_loop(self) -> None:
@@ -206,6 +228,7 @@ class PipelineController:
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
+                self.logger.info('Shutting down...')
                 self.shutdown.set()
                 break
             if key == ord('m'):
