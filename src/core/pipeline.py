@@ -76,6 +76,21 @@ class PipelineController:
 
         self.logger.info('PipelineController initialized')
 
+    def warmup(self) -> None:
+        self.logger.info('Warming up models...')
+
+        rgb_stream = self.camera['color']
+        dummy = np.zeros((rgb_stream.h_res, rgb_stream.w_res, 3), dtype=np.uint8)
+
+        if self.scene.segmenter is not None:
+            self.logger.info('Warming up segmenter...')
+            self.scene.segmenter.track([dummy])
+
+        if self.scene.pose_estimator is not None:
+            self.logger.info('Warming up pose estimator...')
+            self.scene.pose_estimator.compute_features(dummy[:640, :640])
+
+        self.logger.info('Warmup completed')
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, lambda *_: self.shutdown.set())
