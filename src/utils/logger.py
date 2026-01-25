@@ -46,7 +46,7 @@ def get_logger(name: str = 'System', level: int = logging.INFO) -> logging.Logge
 
 
 class PerformanceMonitor:
-    def __init__(self, history_size: int | None = None, report_interval: float = 5.0) -> None:
+    def __init__(self, history_size: int | None = 1000, report_interval: float = 5.0) -> None:
         if history_size is not None and history_size <= 0:
             raise ValueError
 
@@ -54,6 +54,7 @@ class PerformanceMonitor:
 
         self.history_size: int | None = history_size
         self._metrics: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=history_size))
+        self._n: dict[str, int] = defaultdict(int)
 
         self.report_interval: float = report_interval
         self._last_report: float = 0.0
@@ -61,6 +62,7 @@ class PerformanceMonitor:
     def record(self, name: str, duration: float) -> None:
         with self._lock:
             self._metrics[name].append(duration)
+            self._n[name] += 1
 
     def get_summary(self) -> dict[str, dict[str, float]]:
         summary: dict[str, dict[str, float]] = {}
@@ -70,6 +72,7 @@ class PerformanceMonitor:
                 if not durations:
                     continue
 
+                n = self._n[name]
                 avg_time = np.mean(durations)
                 std_time = np.std(durations)
                 min_time = min(durations)
@@ -77,6 +80,7 @@ class PerformanceMonitor:
                 fps = 1.0 / avg_time if avg_time > 0 else 0.0
 
                 summary[name] = {
+                    'n': n,
                     'avg_ms': avg_time * 1000,
                     'std_ms': std_time * 1000,
                     'min_ms': min_time * 1000,
@@ -96,8 +100,8 @@ class PerformanceMonitor:
 
         report = [
             f'--- Performance Report (Last {self.report_interval}s) ---',
-            f'{"Operation":<70} | {"FPS":<12} | {"Avg [ms]":<20} | {"Max [ms]":<12} | {"Min [ms]":<12}',
-            '-' * 145
+            f'{"Operation":<70} | {"FPS":<12} | {"Avg [ms]":<20} | {"Max [ms]":<12} | {"Min [ms]":<12} | {"N":<12}',
+            '-' * 160
         ]
 
         for name in sorted(summary.keys()):
@@ -106,10 +110,11 @@ class PerformanceMonitor:
             min_ms = data['min_ms']
             max_ms = data['max_ms']
             fps = data['fps']
+            n = data['n']
 
-            report.append(f'{name:<70} | {fps:<12.2f} | {avg_ms:<20} | {max_ms:<12.2f} | {min_ms:<12.2f}')
+            report.append(f'{name:<70} | {fps:<12.2f} | {avg_ms:<20} | {max_ms:<12.2f} | {min_ms:<12.2f} | {n:<12,d}')
 
-        report.append('-' * 145)
+        report.append('-' * 160)
         logger.info('\n'.join(report))
 
 
