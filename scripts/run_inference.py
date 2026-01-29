@@ -25,13 +25,14 @@ def main() -> Scene:
         pose_estimator=pose_estimator
     )
 
+    batch_size: int = 2
     controller = PipelineController(
         camera=camera,
         scene=scene,
-        batch_size=1,
-        batch_timeout=0.1,
-        process_every=5,
-        capture_limit=500
+        batch_size=batch_size,
+        batch_timeout=0.1 * batch_size,
+        process_every=1,
+        capture_limit=100
     )
     controller.run()
 
