@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import logging
+import queue
 import random
+import threading
 import time
+from queue import Queue
 from typing import TYPE_CHECKING, Iterator
 
 import joblib
@@ -66,13 +69,21 @@ class Snapshot:
 
 class RigidObject:
     def __init__(self, obj_id: int) -> None:
-        self.obj_id = obj_id
+        self.obj_id: int = obj_id
+        self._lock = threading.Lock()
 
         self._snapshots: list[Snapshot] = []
         self._trajectory: list[ObjectPose] = []
 
         self.last_seen: BBox = BBox.null()
         self.last_updated: float = 0.0
+        self.last_pose_time: float = 0.0
+
+        self.is_busy: bool = False
+        self._staged_rgb: np.ndarray | None = None
+        self._staged_mask: np.ndarray | None = None
+        self._staged_depth: np.ndarray | None = None
+        self._staged_bbox: BBox | None = None
 
         self.max_snapshots: int = 100
         self.dupl_history: int = 5
@@ -97,10 +108,8 @@ class RigidObject:
 
     @property
     def pose(self) -> ObjectPose | None:
-        if self.num_poses == 0:
-            return None
-
-        return self._trajectory[-1]
+        with self._lock:
+            return self._trajectory[-1] if self.num_poses > 0 else None
 
     @property
     def num_snapshots(self) -> int:
@@ -111,7 +120,9 @@ class RigidObject:
         return self._snapshots
 
     def add_pose(self, obj_pose: ObjectPose) -> None:
-        self._trajectory.append(obj_pose)
+        with self._lock:
+            self._trajectory.append(obj_pose)
+
         self.last_updated = time.time()
 
     def register_observations(
@@ -133,18 +144,36 @@ class RigidObject:
             return
 
         now = time.time()
+        self.last_updated = now
 
         rgb: np.ndarray = snapshots[best_idx]
         mask: np.ndarray = masks[best_idx]
         depth_map: np.ndarray = depth_maps[best_idx]
         bbox: BBox = bboxes[best_idx]
 
-        if self.num_snapshots > 0 and (now - self.last_updated) < self.pose_interval:
+        with self._lock:
+            self._staged_rgb = rgb
+            self._staged_mask = mask
+            self._staged_depth = depth_map
+            self._staged_bbox = bbox
+
+        if self.num_snapshots > 0:
             self._propagate_pose(bbox, feat_extractor)
             return
 
+        if self.last_seen.is_null:
+            self.last_seen = bbox
+
+    def update_async(self, feat_extractor: PoseEstimator) -> None:
+        with self._lock:
+            rgb: np.ndarray = self._staged_rgb
+            mask: np.ndarray = self._staged_mask
+            depth_map: np.ndarray = self._staged_depth
+            bbox: BBox = self._staged_bbox
+
         feats: KeypointFeatures = feat_extractor.compute_features(rgb)
 
+        pose_found = False
         if self.num_snapshots > 0:
             pose: ObjectPose = feat_extractor.estimate_pose(
                 query=feats,
@@ -152,18 +181,25 @@ class RigidObject:
                 ref_obj=self
             )
 
-            self.add_pose(
-                pose
-                if pose is not None
-                else ObjectPose.lost()
-            )
-            self.last_updated = now
-            self.last_seen = bbox
+            if pose is not None:
+                self.add_pose(pose)
+                self.last_seen = bbox
+                pose_found = True
+            else:
+                self.add_pose(ObjectPose.lost())
+
+            self.last_pose_time = time.time()
 
         if self.num_snapshots >= self.max_snapshots:
             return
 
+        if self.num_snapshots == 0:
+            self.last_seen = bbox
+
         if self.num_snapshots > 0:
+            if not pose_found:
+                return
+
             if self._pixel_duplicate(rgb):
                 return
 
@@ -176,20 +212,17 @@ class RigidObject:
             if feat_sim:
                 return
 
-        self._snapshots.append(
-            Snapshot(
-                idx=self.num_snapshots,
-                rgb=rgb,
-                mask=mask,
-                depth=depth_map,
-                bbox=bbox,
-                features=feats
+        with self._lock:
+            self._snapshots.append(
+                Snapshot(
+                    idx=self.num_snapshots,
+                    rgb=rgb,
+                    mask=mask,
+                    depth=depth_map,
+                    bbox=bbox,
+                    features=feats
+                )
             )
-        )
-        self.last_updated = now
-
-        if self.last_seen.is_null:
-            self.last_seen = bbox
 
     def _pixel_duplicate(self, rgb: np.ndarray) -> bool:
         chw_snap = rgb.transpose(2, 0, 1)
@@ -234,7 +267,9 @@ class RigidObject:
             self.last_seen = new_bbox
             return
 
-        last_pose = self._trajectory[-1]
+        with self._lock:
+            last_pose = self._trajectory[-1]
+
         if last_pose.is_lost:
             self.last_seen = new_bbox
             return
@@ -317,6 +352,8 @@ class Scene:
 
         self.frame_count: int = 0
         self.objects: dict[int, RigidObject] = {}
+
+        self._pose_queue: Queue[RigidObject] = Queue(maxsize=10)
 
         self.temp_thresh: float = 2.0
         self.iou_thresh: float = 0.5
@@ -401,6 +438,36 @@ class Scene:
                     bboxes=obj_record.xyxy,
                     feat_extractor=self.pose_estimator
                 )
+
+        self._schedule_pose(now)
+
+    def _schedule_pose(self, now: float) -> None:
+        for obj in self.objects.values():
+            if obj.is_busy:
+                continue
+
+            if obj.num_snapshots > 0 and (now - obj.last_pose_time) <= obj.pose_interval:
+                continue
+
+            try:
+                obj.is_busy = True
+                self._pose_queue.put_nowait(obj)
+            except queue.Full:
+                obj.is_busy = False
+
+    def process_pose(self) -> None:
+        try:
+            obj = self._pose_queue.get(timeout=0.1)
+        except queue.Empty:
+            return
+
+        try:
+            with timer('Scene.process_pose', self.logger, self.monitor):
+                obj.update_async(self.pose_estimator)
+        except Exception:
+            pass
+        finally:
+            obj.is_busy = False
 
     def save(self, path: str, store_models: bool = False) -> None:
         store: dict[str, ...] = {

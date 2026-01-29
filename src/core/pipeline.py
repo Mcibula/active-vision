@@ -99,10 +99,12 @@ class PipelineController:
 
         self.logger.info('Starting threads...')
         t_cam = threading.Thread(target=self._camera_loop, daemon=True)
-        t_proc = threading.Thread(target=self._processing_loop, daemon=True)
+        t_segm = threading.Thread(target=self._segmenter_loop, daemon=True)
+        t_pose = threading.Thread(target=self._pose_loop, daemon=True)
 
         t_cam.start()
-        t_proc.start()
+        t_segm.start()
+        t_pose.start()
 
         try:
             self._display_loop()
@@ -111,7 +113,8 @@ class PipelineController:
         finally:
             self.shutdown.set()
             t_cam.join(timeout=1.0)
-            t_proc.join(timeout=1.0)
+            t_segm.join(timeout=1.0)
+            t_pose.join(timeout=1.0)
             cv2.destroyAllWindows()
 
     def _camera_loop(self) -> None:
@@ -165,7 +168,7 @@ class PipelineController:
             self.logger.info('Stopping camera stream...')
             self.camera.stop_streaming()
 
-    def _processing_loop(self) -> None:
+    def _segmenter_loop(self) -> None:
         num_frames = 0
         t0 = time.time()
 
@@ -175,7 +178,7 @@ class PipelineController:
 
             while (
                     len(batch) < self.batch_size
-                    and ((time.time() - t0_batch) <= self.batch_timeout or len(batch) == 0)
+                    and (time.time() - t0_batch <= self.batch_timeout or len(batch) == 0)
             ):
                 try:
                     composite_frame = self.capture_buffer.get(timeout=0.005)
@@ -203,6 +206,10 @@ class PipelineController:
                 t0 = time.time()
 
             time.sleep(0.001)
+
+    def _pose_loop(self) -> None:
+        while not self.shutdown.is_set():
+            self.scene.process_pose()
 
     def _display_loop(self) -> None:
         last_annotated: np.ndarray | None = None
@@ -331,5 +338,5 @@ class PipelineController:
                 fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.5, thickness=2,
                 color=Color.BLACK
             )
-        except Exception as e:
-            pass
+        except Exception:
+            return
