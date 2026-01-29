@@ -370,14 +370,18 @@ class Scene:
             with timer('Scene.read_frames.obj_id', self.logger, self.monitor):
                 if obj_id not in self.objects:
                     best_id = -1
+                    best_iou = self.iou_thresh
+                    best_iom = self.iom_thresh
 
                     for ex_id, ex_obj in self.objects.items():
                         if (now - ex_obj.last_updated) < self.temp_thresh and ex_id not in record:
                             iou = cur_bbox.iou(ex_obj.last_seen)
                             iom = cur_bbox.iom(ex_obj.last_seen)
 
-                            if iou > self.iou_thresh or iom > self.iom_thresh:
+                            if iou > best_iou or iom > best_iom:
                                 best_id = ex_id
+                                best_iou = iou
+                                best_iom = iom
 
                     if best_id != -1:
                         obj_id = best_id
