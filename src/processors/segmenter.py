@@ -329,28 +329,28 @@ class Segmenter:
 
         return objects
 
-    @timer('Segmenter.last_annotated_frames')
-    def last_annotated_frames(
+    @timer('Segmenter.last_annotated_frame')
+    def last_annotated_frame(
             self,
             conf: bool = False,
             labels: bool = False,
             boxes: bool = False,
             masks: bool = True,
             probs: bool = False
-    ) -> list[np.ndarray]:
-        return [
-            cv2.cvtColor(
-                r.plot(
-                    conf=conf,
-                    labels=labels,
-                    boxes=boxes,
-                    masks=masks,
-                    probs=probs,
-                    show=False,
-                    pil=False,
-                    color_mode='instance'
-                ),
-                cv2.COLOR_BGR2RGB
-            )
-            for r in self._results
-        ]
+    ) -> np.ndarray | None:
+        if not self._results:
+            return None
+
+        return cv2.cvtColor(
+            self._results[-1].plot(
+                conf=conf,
+                labels=labels,
+                boxes=boxes,
+                masks=masks,
+                probs=probs,
+                show=False,
+                pil=False,
+                color_mode='instance'
+            ),
+            cv2.COLOR_BGR2RGB
+        )

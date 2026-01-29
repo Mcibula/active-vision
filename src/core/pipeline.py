@@ -190,11 +190,11 @@ class PipelineController:
                 continue
 
             self.scene.read_frames(batch)
-            annotated = self.scene.segmenter.last_annotated_frames()
+            annotated = self.scene.segmenter.last_annotated_frame()
 
-            for af in annotated:
+            if annotated is not None:
                 with contextlib.suppress(queue.Full):
-                    self.display_buffer.put(af, timeout=0.01)
+                    self.display_buffer.put(annotated, timeout=0.01)
 
             num_frames += len(batch)
             if time.time() - t0 > 1.0:
