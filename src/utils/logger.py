@@ -1,3 +1,7 @@
+"""
+Logging and performance monitoring utilities
+"""
+
 from __future__ import annotations
 
 import functools
@@ -16,6 +20,10 @@ if TYPE_CHECKING:
 
 
 class ColoredFormatter(logging.Formatter):
+    """
+    Custom `logging.Formatter` coloring logs based on the severity level
+    """
+
     FORMAT: ClassVar[str] = '%(asctime)s | %(levelname)-8s | %(name)s.%(funcName)-20s | %(message)s'
     FORMATS: ClassVar[dict[int, str]] = {
         logging.DEBUG: Color.GREY.ansi(FORMAT),
@@ -33,6 +41,14 @@ class ColoredFormatter(logging.Formatter):
 
 
 def get_logger(name: str = 'System', level: int = logging.INFO) -> logging.Logger:
+    """
+    Generate a `logging.Logger` instance with `ColoredFormatter` as default
+
+    :param name: Name of the logger
+    :param level: Baseline severity level; logs with lower level will not be displayed
+    :return: A `logging.Logger` instance
+    """
+
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
@@ -46,10 +62,24 @@ def get_logger(name: str = 'System', level: int = logging.INFO) -> logging.Logge
 
 
 class PerformanceMonitor:
+    """
+    Performance monitor recording operation durations, preserving value history
+    and calculating moving metrics
+    """
+
     def __init__(self, history_size: int | None = 1000, report_interval: float = 5.0) -> None:
+        """
+        Initialize a performance monitor
+
+        :param history_size: Number of values kept in history for each metric;
+                             if `None`, the history will be unlimited
+        :param report_interval: Number of seconds between periodic reports
+        """
+
         if history_size is not None and history_size <= 0:
             raise ValueError
 
+        # Preserve thread safety
         self._lock = threading.Lock()
 
         self.history_size: int | None = history_size
@@ -60,11 +90,24 @@ class PerformanceMonitor:
         self._last_report: float = 0.0
 
     def record(self, name: str, duration: float) -> None:
+        """
+        Record an operation duration
+
+        :param name: Name of the operation
+        :param duration: Time in seconds
+        """
+
         with self._lock:
             self._metrics[name].append(duration)
             self._n[name] += 1
 
     def get_summary(self) -> dict[str, dict[str, float]]:
+        """
+        Compute a summary for each recorded metric
+
+        :return: Summary in the form of dictionary with metric names as keys
+        """
+
         summary: dict[str, dict[str, float]] = {}
 
         with self._lock:
@@ -91,6 +134,12 @@ class PerformanceMonitor:
         return summary
 
     def log_periodically(self, logger: logging.Logger) -> None:
+        """
+        Log the performance summary if in reporting interval
+
+        :param logger: Logger to record to
+        """
+
         now = time.time()
         if now - self._last_report < self.report_interval:
             return
@@ -119,6 +168,11 @@ class PerformanceMonitor:
 
 
 class timer:
+    """
+    Context manager and decorator measuring elapsed time
+    of the operations contained within it
+    """
+
     def __init__(
             self,
             name: str = '',
@@ -128,6 +182,21 @@ class timer:
             logger_attr: str = 'logger',
             monitor_attr: str = 'monitor'
     ) -> None:
+        """
+        Initialize the timer either as a context manager or as a decorator of a function or a method.
+        If used as a method decorator, the `timer` will look for a logger and a performance monitor
+        as instance attributes named according to `logger_attr` and `monitor_attr`, respectively.
+
+        :param name: Name of the timer or operation
+        :param logger: Optional logger to record the measured values to
+        :param monitor: Optional `PerformanceMonitor` to record the measured values with
+        :param level: Baseline logging severity level
+        :param logger_attr: Name of the instance attribute containing a `logging.Logger` instance
+                            to use if the timer is used as a method decorator
+        :param monitor_attr: Name of the instance attribute containing a `PerformanceMonitor` instance
+                             to use if the timer is used as a method decorator
+        """
+
         self.name: str = name
 
         self.logger: logging.Logger = logger
@@ -161,6 +230,10 @@ class timer:
             )
 
     def __call__(self, func: Callable[..., Any]) -> Callable[..., Any]:
+        """
+        Generate a `timer` instance for a decorated function
+        """
+
         @functools.wraps(func)
         def wrapper(*args: tuple[Any, ...], **kwargs: dict[str, Any]) -> Any:
             report_name = self.name

@@ -215,6 +215,13 @@ def mse(img1: np.ndarray, img2: np.ndarray) -> float:
 
 
 def sharpness(img: np.ndarray) -> float:
+    """
+    Calculate the image sharpness as the variance of the Laplacian operator
+
+    :param img: A single- or multi-channel image with the HWC dimension order
+    :return: Laplacian variance of the image. Higher values indicate sharper image
+    """
+
     if img.ndim not in (2, 3):
         raise ValueError
 

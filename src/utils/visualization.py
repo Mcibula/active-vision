@@ -62,6 +62,11 @@ class FPSAnnotator:
 
 
 class Color(tuple):
+    """
+    Basic color representation supporting a few color operations
+    """
+
+    # Predefined basic colors
     BLACK: ClassVar[Color]
     WHITE: ClassVar[Color]
     GREY: ClassVar[Color]
@@ -77,9 +82,18 @@ class Color(tuple):
     INFO: ClassVar[Color]
 
     def __new__(cls, r: int, g: int, b: int) -> Color:
+        """
+        Create a new `Color` instance from RGB values
+
+        :param r: Red channel value in range [0; 255]
+        :param g: Green channel value in range [0; 255]
+        :param b: Blue channel value in range [0; 255]
+        """
+
         r = max(0, min(255, int(r)))
         g = max(0, min(255, int(g)))
         b = max(0, min(255, int(b)))
+
         return super().__new__(cls, (r, g, b))
 
     def __repr__(self) -> str:
@@ -103,38 +117,83 @@ class Color(tuple):
 
     @property
     def r(self) -> int:
+        """
+        Red channel value in range :math:`[0, 255]`
+        """
+
         return self[0]
 
     @property
     def g(self) -> int:
+        """
+        Green channel value in range :math:`[0, 255]`
+        """
+
         return self[1]
 
     @property
     def b(self) -> int:
+        """
+        Blue channel value in range :math:`[0, 255]`
+        """
+
         return self[2]
 
     @property
     def rgb(self) -> tuple[int, int, int]:
+        """
+        RGB tuple
+        """
+
         return self
 
     @property
     def bgr(self) -> tuple[int, int, int]:
+        """
+        BGR tuple
+        """
+
         return self.rgb[::-1]
 
     @property
     def hex(self) -> str:
+        """
+        Hexadecimal color representation
+        """
+
         return f'#{self.r:02x}{self.g:02x}{self.b:02x}'
 
     @property
     def luminance(self) -> float:
+        r"""
+        Color luminance according the Rec. 601 standard
+
+        .. math:: Y'_{\text{601}}=0.299\cdot R+0.587\cdot G+0.114\cdot B
+        """
+
         return 0.299 * self.r + 0.587 * self.g + 0.114 * self.b
 
     def ansi(self, text: str, bg: bool = False) -> str:
+        """
+        Apply the color to given text according to the ANSI standard
+
+        :param text: Text to colorize
+        :param bg: If `True`, uses the color as background
+        :return: ANSI string
+        """
+
         mode = 48 if bg else 38
         return f'\033[{mode};2;{self.r};{self.g};{self.b}m{text}\033[0m'
 
     @classmethod
     def from_hex(cls, hex_code: str) -> Color:
+        """
+        Instantiate `Color` from a HEX code
+
+        :param hex_code: Hexadecimal color representation
+        :return: `Color` instance
+        """
+
         hex_code = hex_code.lstrip('#')
 
         if len(hex_code) != 6:
@@ -149,6 +208,13 @@ class Color(tuple):
 
     @classmethod
     def by_name(cls, name: str) -> Color:
+        """
+        Get `Color` instance by its name if defined
+
+        :param name: Color name
+        :return: Respective `Color` instance if `name` is valid; `Color.WHITE` otherwise
+        """
+
         name = name.upper()
 
         if hasattr(cls, name):
@@ -157,18 +223,23 @@ class Color(tuple):
         return cls.WHITE
 
 
+# Color definitions
+# Monochromatic
 Color.BLACK = Color(0, 0, 0)
 Color.WHITE = Color(255, 255, 255)
 Color.GREY = Color(128, 128, 128)
 
+# Basic
 Color.RED = Color(255, 0, 0)
 Color.GREEN = Color(0, 255, 0)
 Color.BLUE = Color(0, 0, 255)
 
+# Mixtures
 Color.YELLOW = Color.RED + Color.GREEN
 Color.CYAN = Color.GREEN + Color.BLUE
 Color.MAGENTA = Color.RED + Color.BLUE
 
+# Semantics
 Color.WARNING = Color.YELLOW
 Color.ERROR = Color.RED * 0.9
 Color.SUCCESS = Color.GREEN
