@@ -6,11 +6,12 @@ import random
 import threading
 import time
 from queue import Queue
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Any, Iterator
 
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 from processors.pose_estimator import ObjectPose
 from processors.segmenter import BBox
@@ -19,8 +20,6 @@ from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
 
 if TYPE_CHECKING:
-    import torch
-
     from processors.pose_estimator import KeypointFeatures, PoseEstimator
     from processors.segmenter import Segmenter, TrackRecord
 
@@ -101,6 +100,29 @@ class RigidObject:
 
     def __getitem__(self, snapshot_id: int) -> Snapshot:
         return self._snapshots[snapshot_id]
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        transient = [
+            '_lock', 'is_busy',
+            '_staged_rgb', '_staged_mask',
+            '_staged_depth', '_staged_bbox'
+        ]
+
+        for key in transient:
+            state.pop(key, None)
+
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+
+        self._lock = threading.Lock()
+        self.is_busy = False
+        self._staged_rgb = None
+        self._staged_mask = None
+        self._staged_depth = None
+        self._staged_bbox = None
 
     @property
     def num_poses(self) -> int:
@@ -470,27 +492,37 @@ class Scene:
             obj.is_busy = False
 
     def save(self, path: str, store_models: bool = False) -> None:
-        store: dict[str, ...] = {
-            'device': self.device,
-            'segmenter': self.segmenter if store_models else None,
-            'frame_count': self.frame_count,
-            'objects': self.objects
-        }
+        state: dict[str, Any] = self.__dict__.copy()
+
+        if 'device' in state:
+            state['device'] = str(self.device)
+
+        if not store_models:
+            state['segmenter'] = None
+            state['pose_estimator'] = None
+
+        transient = ['_pose_queue', 'logger', 'monitor']
+        for key in transient:
+            state.pop(key, None)
 
         joblib.dump(
-            value=store,
+            value=state,
             filename=path,
             compress=True
         )
 
     @classmethod
     def load(cls, path: str) -> Scene:
-        store: dict[str, ...] = joblib.load(path)
+        state: dict[str, Any] = joblib.load(path)
         scene: Scene = cls.__new__(cls)
 
-        scene.device = store['device']
-        scene.segmenter = store['segmenter']
-        scene.frame_count = store['frame_count']
-        scene.objects = store['objects']
+        scene.__dict__.update(state)
+        scene.device = (
+            torch.device(state['device'])
+            if 'device' in state else infer_device()
+        )
+        scene._pose_queue = Queue(maxsize=10)
+        scene.logger = get_logger('Scene', level=logging.INFO)
+        scene.monitor = PerformanceMonitor()
 
         return scene
