@@ -13,57 +13,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from processors.pose_estimator import ObjectPose
-from processors.segmenter import BBox
+from structures import BBox, KeypointFeatures, ObjectPose, Snapshot
 from utils.image import mse, sharpness
 from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
 
 if TYPE_CHECKING:
-    from processors.pose_estimator import KeypointFeatures, PoseEstimator
-    from processors.segmenter import Segmenter, TrackRecord
-
-
-class Snapshot:
-    def __init__(
-            self,
-            idx: int,
-            rgb: np.ndarray,
-            mask: np.ndarray,
-            depth: np.ndarray,
-            bbox: BBox,
-            features: KeypointFeatures
-    ) -> None:
-        self._idx = idx
-        self._rgb = rgb
-        self._mask = mask
-        self._depth = depth
-        self._bbox = bbox
-        self._features = features
-
-    @property
-    def idx(self) -> int:
-        return self._idx
-
-    @property
-    def mask(self) -> np.ndarray:
-        return self._mask
-
-    @property
-    def rgb(self) -> np.ndarray:
-        return self._rgb
-
-    @property
-    def depth(self) -> np.ndarray:
-        return self._depth
-
-    @property
-    def bbox(self) -> BBox:
-        return self._bbox
-
-    @property
-    def features(self) -> KeypointFeatures:
-        return self._features
+    from processors.pose_estimator import PoseEstimator
+    from processors.segmenter import Segmenter
+    from structures import TrackRecord
 
 
 class RigidObject:

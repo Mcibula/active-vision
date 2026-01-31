@@ -1,202 +1,22 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 
 import cv2
 import kornia
 import numpy as np
 import torch
 from kornia.feature import DeDoDe, LightGlue
-from scipy.spatial.transform import Rotation
 from torch import Tensor
 
+from structures import KeypointFeatures, ObjectPose
 from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
 
 if TYPE_CHECKING:
-    from camera.realsense import Intrinsics
-    from core.scene import RigidObject, Snapshot
-    from processors.segmenter import BBox
-
-
-class KeypointFeatures:
-    def __init__(self, keypoints: Tensor, descriptors: Tensor, img_size: Tensor) -> None:
-        if keypoints.ndim != 3 or descriptors.ndim != 3 or img_size.ndim != 2:
-            raise ValueError
-
-        batch, n_kpts, kpt_dim = keypoints.shape
-
-        if kpt_dim != 2 or img_size.shape[1] != 2:
-            raise ValueError
-
-        if descriptors.shape[0] != batch or img_size.shape[0] != batch:
-            raise ValueError
-
-        if descriptors.shape[1] != n_kpts:
-            raise ValueError
-
-        self._keypoints: Tensor = keypoints           # (B, N, 2)
-        self._descriptors: Tensor = descriptors       # (B, N, D)
-        self._img_size: Tensor = img_size             # (B, 2): [[W, H]]
-
-    @property
-    def keypoints(self) -> Tensor:
-        return self._keypoints
-
-    @property
-    def descriptors(self) -> Tensor:
-        return self._descriptors
-
-    @property
-    def img_size(self) -> Tensor:
-        return self._img_size
-
-    @property
-    def n_keypoints(self) -> int:
-        return self._keypoints.shape[1]
-
-    @property
-    def batch_size(self) -> int:
-        return self._keypoints.shape[0]
-
-    @property
-    def descriptor_dim(self) -> int:
-        return self._descriptors.shape[2]
-
-    @property
-    def _dict(self) -> dict[str, Tensor]:
-        return {
-            'keypoints': self._keypoints,
-            'descriptors': self._descriptors,
-            'image_size': self._img_size
-        }
-
-    def __iter__(self) -> Iterator[Tensor]:
-        yield from [self._keypoints, self._descriptors, self._img_size]
-
-    def __getitem__(self, key: str) -> Tensor:
-        return self._dict[key]
-
-    def keys(self) -> Iterator[str]:
-        yield from self._dict.keys()
-
-    def repeat(self, n_repeats: int) -> KeypointFeatures:
-        return KeypointFeatures(
-            keypoints=self._keypoints.repeat(n_repeats, 1, 1),
-            descriptors=self._descriptors.repeat(n_repeats, 1, 1),
-            img_size=self._img_size.repeat(n_repeats, 1)
-        )
-
-    @classmethod
-    def merge(cls, features: list[KeypointFeatures]) -> KeypointFeatures | None:
-        if not features:
-            return None
-
-        kpts, desc, sizes = zip(*[
-            (f.keypoints[0], f.descriptors[0], f.img_size[0])
-            for f in features
-        ])
-
-        kpts = torch.stack(kpts, dim=0)
-        desc = torch.stack(desc, dim=0)
-        sizes = torch.stack(sizes, dim=0)
-
-        return KeypointFeatures(
-            keypoints=kpts,
-            descriptors=desc,
-            img_size=sizes
-        )
-
-    @classmethod
-    def empty(cls, desc_dim: int = 256) -> KeypointFeatures:
-        device: torch.device = infer_device()
-
-        return cls(
-            keypoints=torch.empty((1, 0, 2), device=device),
-            descriptors=torch.empty((1, 0, desc_dim), device=device),
-            img_size=torch.tensor([[0, 0]], device=device)
-        )
-
-
-class ObjectPose:
-    def __init__(
-            self,
-            x: float, y: float, z: float,
-            rx: float, ry: float, rz: float,
-            is_valid: bool = True
-    ) -> None:
-        self.x: float = x
-        self.y: float = y
-        self.z: float = z
-
-        self.rx: float = rx
-        self.ry: float = ry
-        self.rz: float = rz
-
-        self._is_valid: bool = is_valid
-
-    def __repr__(self) -> str:
-        if self.is_lost:
-            return '<ObjectPose [LOST]>'
-
-        return (
-            f'<ObjectPose '
-            f'pos:[{self.x:.3f} {self.y:.3f} {self.z:.3f}] m, '
-            f'rot:[{self.rx:.3f} {self.ry:.3f} {self.rz:.3f}] rad>'
-        )
-
-    @classmethod
-    def from_matrix(cls, pose_matrix: np.ndarray) -> ObjectPose:
-        if pose_matrix.shape != (4, 4):
-            raise ValueError
-
-        tx, ty, tz = pose_matrix[:3, 3]
-
-        r = Rotation.from_matrix(pose_matrix[:3, :3])
-        rx, ry, rz = r.as_euler('xyz')
-
-        return cls(
-            x=tx, y=ty, z=tz,
-            rx=rx, ry=ry, rz=rz,
-            is_valid=True
-        )
-
-    @classmethod
-    def lost(cls) -> ObjectPose:
-        return cls(
-            x=np.nan, y=np.nan, z=np.nan,
-            rx=np.nan, ry=np.nan, rz=np.nan,
-            is_valid=False
-        )
-
-    @property
-    def pos(self) -> tuple[float, float, float]:
-        return self.x, self.y, self.z
-
-    @property
-    def rot(self) -> tuple[float, float, float]:
-        return self.rx, self.ry, self.rz
-
-    @property
-    def pitch(self) -> float:
-        return self.rx
-
-    @property
-    def yaw(self) -> float:
-        return self.ry
-
-    @property
-    def roll(self) -> float:
-        return self.rz
-
-    @property
-    def pose_6d(self) -> tuple[float, float, float, float, float, float]:
-        return self.pos + self.rot
-
-    @property
-    def is_lost(self) -> bool:
-        return not self._is_valid
+    from core.scene import RigidObject
+    from structures import BBox, Intrinsics, Snapshot
 
 
 class PoseEstimator:

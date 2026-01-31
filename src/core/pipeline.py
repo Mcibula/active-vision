@@ -19,8 +19,8 @@ from utils.visualization import Color
 
 if TYPE_CHECKING:
     from camera import RealsenseCamera
-    from processors.pose_estimator import ObjectPose
-    from scene import RigidObject, Scene
+    from core import RigidObject, Scene
+    from structures import ObjectPose
 
 
 class PipelineController:
