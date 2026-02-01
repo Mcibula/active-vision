@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from structures import BBox, KeypointFeatures, ObjectPose, Snapshot
+from structures import BBox, KeypointFeatures, ObjectPose, Snapshot, Trajectory
 from utils.image import mse, sharpness
 from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
@@ -30,7 +30,7 @@ class RigidObject:
         self._lock = threading.Lock()
 
         self._snapshots: list[Snapshot] = []
-        self._trajectory: list[ObjectPose] = []
+        self._trajectory: Trajectory = Trajectory(capacity=None)
 
         self.last_seen: BBox = BBox.null()
         self.last_updated: float = 0.0
