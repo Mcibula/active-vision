@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Iterator
 
@@ -181,6 +182,7 @@ class ObjectPose:
         self.rz: float = rz
 
         self._is_valid: bool = is_valid
+        self._timestamp: float = time.time()
 
     def __repr__(self) -> str:
         if self.is_lost:
@@ -243,3 +245,7 @@ class ObjectPose:
     @property
     def is_lost(self) -> bool:
         return not self._is_valid
+
+    @property
+    def timestamp(self) -> float:
+        return self._timestamp
