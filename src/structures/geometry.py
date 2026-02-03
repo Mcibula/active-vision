@@ -412,21 +412,28 @@ class Trajectory:
             self,
             ax: Axes3D | None = None,
             color: tuple[int, int, int] = Color.BLUE,
+            n_orient: int = 0,
             show: bool = True
     ) -> Axes3D:
-        """
+        r"""
         Plot the trajectory
 
         :param ax: Pre-existing 3D axes to use; if `None`, a new one will be created
-        :param color: RGB color of the plotted trajectory with values in range [0, 255]
+        :param color: RGB color of the plotted trajectory with values in range :math:`[0, 255]`
+        :param n_orient: If :math:`> 0`, the orientation of the object along the trajectory
+                         will be visualized by :math:`n_\text{orient}` or :math:`n_\text{orient} + 1`
+                         uniformly distributed coordinate triads
         :param show: If `True`, the final plot will be shown
         :return: 3D axes with the plot
         """
 
-        # Convert positions to centimeters
-        points = self.positions * 100
+        n_orient = max(0, n_orient)
 
-        if len(points) < 2:
+        # Convert positions to centimeters
+        unit_mult: int = 100
+        pos = self.positions * unit_mult
+
+        if len(pos) < 2:
             return ax
 
         # If no pre-existing trajectory is given, create a new one
@@ -439,7 +446,7 @@ class Trajectory:
             )
 
         # Permute trajectory dimensions, so they are aligned with the displayed space
-        px, py, pz = points[:, 0], points[:, 2], -points[:, 1]
+        px, py, pz = pos[:, 0], pos[:, 2], -pos[:, 1]
         p_traj = np.column_stack((px, py, pz))
 
         # Infer limits and scale
@@ -495,6 +502,46 @@ class Trajectory:
             0, 0, 0, 0, 0, length,
             color='b', arrow_length_ratio=0.3, linewidth=2
         )
+
+        # If the orientation drawing is allowed
+        if n_orient > 0:
+            # Get a subset of poses to use
+            points: list[ObjectPose] = self.valid
+            step = max(1, len(points) // n_orient)
+            subset = points[::step]
+
+            # Forcibly include the last pose
+            if points[-1] not in subset:
+                subset.append(points[-1])
+
+            for pose in subset:
+                # Object origin
+                rpx = pose.pos[0] * unit_mult
+                rpy = pose.pos[2] * unit_mult
+                rpz = -pose.pos[1] * unit_mult
+
+                # Direction vectors
+                R = Rotation.from_euler('xyz', pose.rot).as_matrix()
+                vx_x, vx_y, vx_z = R[0, 0], R[2, 0], -R[1, 0]
+                vy_x, vy_y, vy_z = R[0, 1], R[2, 1], -R[1, 1]
+                vz_x, vz_y, vz_z = R[0, 2], R[2, 2], -R[1, 2]
+
+                # Plot the triads
+                ax.quiver(
+                    rpx, rpy, rpz,
+                    vx_x, vx_y, vx_z,
+                    color='r', length=length, normalize=True, alpha=0.8
+                )
+                ax.quiver(
+                    rpx, rpy, rpz,
+                    vy_x, vy_y, vy_z,
+                    color='g', length=length, normalize=True, alpha=0.8
+                )
+                ax.quiver(
+                    rpx, rpy, rpz,
+                    vz_x, vz_y, vz_z,
+                    color='b', length=length, normalize=True, alpha=0.8
+                )
 
         # Get the trajectory range per dimension
         d_min_x, d_max_x = px.min(), px.max()
