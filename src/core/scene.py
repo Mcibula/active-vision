@@ -83,6 +83,14 @@ class RigidObject:
         self._staged_bbox = None
 
     @property
+    def num_snapshots(self) -> int:
+        return len(self._snapshots)
+
+    @property
+    def snapshots(self) -> list[Snapshot]:
+        return self._snapshots
+
+    @property
     def num_poses(self) -> int:
         return len(self._trajectory)
 
@@ -92,12 +100,8 @@ class RigidObject:
             return self._trajectory[-1] if self.num_poses > 0 else None
 
     @property
-    def num_snapshots(self) -> int:
-        return len(self._snapshots)
-
-    @property
-    def snapshots(self) -> list[Snapshot]:
-        return self._snapshots
+    def trajectory(self) -> Trajectory:
+        return self._trajectory
 
     def add_pose(self, obj_pose: ObjectPose) -> None:
         with self._lock:
