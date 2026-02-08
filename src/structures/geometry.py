@@ -175,12 +175,28 @@ class BBox:
 
 
 class ObjectPose:
+    """
+    6-DoF object pose
+    """
+
     def __init__(
             self,
             x: float, y: float, z: float,
             rx: float, ry: float, rz: float,
             is_valid: bool = True
     ) -> None:
+        """
+        Create a new 6-DoF object pose
+
+        :param x: Position along the width relative to the viewpoint
+        :param y: Position along the depth relative to the viewpoint
+        :param z: Position along the height relative to the viewpoint
+        :param rx: Euler angle along the x-axis in radians
+        :param ry: Euler angle along the y-axis in radians
+        :param rz: Euler angle along the z-axis in radians
+        :param is_valid: If `False`, this pose will be marked as `[LOST]`
+        """
+
         self.x: float = x
         self.y: float = y
         self.z: float = z
@@ -204,11 +220,20 @@ class ObjectPose:
 
     @classmethod
     def from_matrix(cls, pose_matrix: np.ndarray) -> ObjectPose:
+        """
+        Generate the pose from the transformation matrix
+
+        :param pose_matrix: 4x4 transformation matrix
+        :return: New `ObjectPose` object
+        """
+
         if pose_matrix.shape != (4, 4):
             raise ValueError
 
+        # Get the translation vector
         tx, ty, tz = pose_matrix[:3, 3]
 
+        # Convert the rotation matrix to the Euler angle vector
         r = Rotation.from_matrix(pose_matrix[:3, :3])
         rx, ry, rz = r.as_euler('xyz')
 
@@ -220,6 +245,12 @@ class ObjectPose:
 
     @classmethod
     def lost(cls) -> ObjectPose:
+        """
+        Generate a lost pose
+
+        :return: `ObjectPose` object indicating lost pose
+        """
+
         return cls(
             x=np.nan, y=np.nan, z=np.nan,
             rx=np.nan, ry=np.nan, rz=np.nan,
@@ -228,34 +259,72 @@ class ObjectPose:
 
     @property
     def pos(self) -> tuple[float, float, float]:
+        """
+        Position of the object along the :math:`x`-, :math:`y`-, and :math:`z`-axis
+        relative to the viewpoint
+        """
+
         return self.x, self.y, self.z
 
     @property
     def rot(self) -> tuple[float, float, float]:
+        """
+        Euler angle orientation of the object in radians
+        along the :math:`x`-, :math:`y`-, and :math:`z`-axis relative to the viewpoint
+        """
+
         return self.rx, self.ry, self.rz
 
     @property
     def pitch(self) -> float:
+        """
+        Pitch (:math:`r_x`) angle in radians
+        """
+
         return self.rx
 
     @property
     def yaw(self) -> float:
+        """
+        Yaw (:math:`r_y`) angle in radians
+        """
+
         return self.ry
 
     @property
     def roll(self) -> float:
+        """
+        Roll (:math:`r_z`) angle in radians
+        """
+
         return self.rz
 
     @property
     def pose_6d(self) -> tuple[float, float, float, float, float, float]:
+        r"""
+        6-DoF pose of the object as a vector
+        .. math::
+            \left[p_x, p_y, p_z, r_x, r_y, r_z\right].
+
+        The angles are in radians.
+        """
+
         return self.pos + self.rot
 
     @property
     def is_lost(self) -> bool:
+        """
+        If `True` the pose is invalid
+        """
+
         return not self._is_valid
 
     @property
     def timestamp(self) -> float:
+        """
+        UNIX time when the pose was created
+        """
+
         return self._timestamp
 
 
