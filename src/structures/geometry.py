@@ -389,6 +389,7 @@ class Trajectory:
         """
         Maximum capacity of this trajectory
         """
+
         return self._capacity
 
     @property
@@ -413,8 +414,9 @@ class Trajectory:
 
     @property
     def positions(self) -> np.ndarray | None:
-        """
-        XYZ coordinates of all poses recorded
+        r"""
+        XYZ coordinates of all poses recorded as a :math:`\mathbb{R}^{N \times 3}` matrix
+        for :math:`N` valid poses. `None` if no object positions have been recorded
         """
 
         positions = self._pose_accessor(['pos'])
@@ -425,8 +427,10 @@ class Trajectory:
 
     @property
     def orientations(self) -> np.ndarray | None:
-        """
-        XYZ Euler angles of all poses recorded
+        r"""
+        XYZ Euler angles in radians of all poses recorded
+        as a :math:`\mathbb{R}^{N \times 3}` matrix for :math:`N` valid poses.
+        `None` if no object orientations have been recorded
         """
 
         rotations = self._pose_accessor(['rot'])
@@ -437,8 +441,10 @@ class Trajectory:
 
     @property
     def points(self) -> np.ndarray | None:
-        """
-        Position and rotation vectors of all poses recorded
+        r"""
+        Positions and orientations of all poses recorded in the form of
+        a :math:`\mathbb{R}^{N \times 6}` matrix for :math:`N` valid poses.
+        `None` if no object poses have been recorded
         """
 
         positions = self.positions
