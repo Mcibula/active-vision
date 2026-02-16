@@ -1,3 +1,7 @@
+"""
+Data structures operating with geometrical data
+"""
+
 from __future__ import annotations
 
 import time
@@ -18,6 +22,10 @@ if TYPE_CHECKING:
 
 @dataclass
 class TrackRecord:
+    """
+    Object grouping data obtained by the tracker in `processors.segmenter.Segmenter`
+    """
+
     xyxy: list[BBox]
     masks: list[np.ndarray]
     snapshots: list[np.ndarray]
@@ -25,13 +33,32 @@ class TrackRecord:
 
 
 class BBox:
+    """
+    Object representing a 2D bounding box and supporting operations on it
+    """
+
     def __init__(self, x1: int, y1: int, x2: int, y2: int) -> None:
+        """
+        Construct a bounding box from the pixel coordinates
+        of the left top and right bottom corners of the bounding box
+
+        :param x1: Pixel coordinate along the width of the image
+                   of the left top corner
+        :param y1: Pixel coordinate along the height of the image
+                   of the left top corner
+        :param x2: Pixel coordinate along the width of the image
+                   of the right bottom corner
+        :param y2: Pixel coordinate along the height of the image
+                   of the right bottom corner
+        """
+
         if x1 < 0 or y1 < 0 or x2 < 0 or y2 < 0:
             raise ValueError
 
         if x1 > x2 or y1 > y2:
             raise ValueError
 
+        # Enforce integers
         self._x1: int = int(x1)
         self._y1: int = int(y1)
         self._x2: int = int(x2)
@@ -63,53 +90,105 @@ class BBox:
 
     @property
     def x1(self) -> int:
+        """
+        Pixel coordinate along the width of the image of the left top corner
+        """
+
         return self._x1
 
     @property
     def y1(self) -> int:
+        """
+        Pixel coordinate along the height of the image of the left top corner
+        """
+
         return self._y1
 
     @property
     def x2(self) -> int:
+        """
+        Pixel coordinate along the width of the image of the right bottom corner
+        """
+
         return self._x2
 
     @property
     def y2(self) -> int:
+        """
+        Pixel coordinate along the height of the image of the right bottom corner
+        """
+
         return self._y2
 
     @property
     def lu(self) -> tuple[int, int]:
+        """
+        XY coordinates of the left top corner of this bounding box
+        """
+
         return self.x1, self.y1
 
     @property
     def br(self) -> tuple[int, int]:
+        """
+        XY coordinates of the right bottom corner of this bounding box
+        """
+
         return self.x2, self.y2
 
     @property
     def w(self) -> int:
+        """
+        Width of this bounding box
+        """
+
         return self.x2 - self.x1
 
     @property
     def h(self) -> int:
+        """
+        Height of this bounding box
+        """
+
         return self.y2 - self.y1
 
     @property
     def xyxy(self) -> tuple[int, int, int, int]:
+        """
+        XYXY representation of this bounding box
+        """
+
         return self.x1, self.y1, self.x2, self.y2
 
     @property
     def xywh(self) -> tuple[int, int, int, int]:
+        """
+        XYWH representation of this bounding box
+        """
+
         return self.x1, self.y1, self.w, self.h
 
     @property
     def area(self) -> int:
+        """
+        Area of this bounding box
+        """
+
         return self.w * self.h
 
     @property
     def shape(self) -> tuple[int, int]:
+        """
+        Dimensions of this bounding box as `(H, W)`
+        """
+
         return self.h, self.w
 
     def union(self, other: BBox) -> BBox:
+        """
+        Construct an union of this and the `other` bounding box
+        """
+
         return BBox(
             x1=min(self.x1, other.x1),
             y1=min(self.y1, other.y1),
@@ -118,6 +197,13 @@ class BBox:
         )
 
     def intersection(self, other: BBox) -> BBox | None:
+        """
+        Construct an intersection of this and the `other` bounding box
+
+        :return: An intersecting area as a new `BBox`
+                 or `None` if the intersection does not exist
+        """
+
         ix1 = max(self.x1, other.x1)
         iy1 = max(self.y1, other.y1)
         ix2 = min(self.x2, other.x2)
@@ -129,6 +215,10 @@ class BBox:
         return None
 
     def contains(self, other: BBox) -> bool:
+        """
+        Check if this bounding box is fully contained by the `other` bounding box
+        """
+
         return (
             other.x1 >= self.x1
             and other.y1 >= self.y1
@@ -137,6 +227,15 @@ class BBox:
         )
 
     def iou(self, other: BBox) -> float:
+        r"""
+        Calculate the intersection over union area between this and the `other` bounding box:
+        .. math::
+            \mathrm{IoU}\left(B_1, B_2\right)
+              = \frac{A\left(B_1 \cap B_2\right)}{A\left(B_1\right) + A\left(B_2\right) - A\left(B_1 \cap B_2\right)}
+
+        :return: Pixel IoU area
+        """
+
         inter = self & other
         if inter is None:
             return 0.0
@@ -148,6 +247,15 @@ class BBox:
         return inter.area / union_area
 
     def iom(self, other: BBox) -> float:
+        r"""
+        Calculate the intersection over minimum area between this and the `other` bounding box:
+        .. math::
+            \mathrm{IoM}\left(B_1, B_2\right)
+              = \frac{A\left(B_1 \cap B_2\right)}{\min\left\{A\left(B_1\right), A\left(B_2\right)\right\}}
+
+        :return: Pixel IoM area
+        """
+
         inter = self & other
         if inter is None:
             return 0.0
@@ -160,14 +268,26 @@ class BBox:
 
     @classmethod
     def null(cls) -> BBox:
+        """
+        Construct a null bounding box
+        """
+
         return BBox(0, 0, 0, 0)
 
     @property
     def is_null(self) -> bool:
+        """
+        Check if this bounding box is null
+        """
+
         return self == BBox.null()
 
     @property
     def centroid(self) -> tuple[int, int]:
+        """
+        XY coordinates of the centroid of this bounding box
+        """
+
         cx = (self.x1 + self.x2) // 2
         cy = (self.y1 + self.y2) // 2
 
