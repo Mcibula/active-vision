@@ -65,7 +65,7 @@ class BBox:
         self._y2: int = int(y2)
 
     def __repr__(self) -> str:
-        return f'<BBox {self.w}x{self.h} @ {self.lu}, {self.br}>'
+        return f'<BBox {self.w}x{self.h} @ {self.lt}, {self.rb}>'
 
     def __iter__(self) -> Iterator[int]:
         yield from self.xyxy
@@ -121,7 +121,7 @@ class BBox:
         return self._y2
 
     @property
-    def lu(self) -> tuple[int, int]:
+    def lt(self) -> tuple[int, int]:
         """
         XY coordinates of the left top corner of this bounding box
         """
@@ -129,7 +129,7 @@ class BBox:
         return self.x1, self.y1
 
     @property
-    def br(self) -> tuple[int, int]:
+    def rb(self) -> tuple[int, int]:
         """
         XY coordinates of the right bottom corner of this bounding box
         """
