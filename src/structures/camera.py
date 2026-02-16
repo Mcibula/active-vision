@@ -1,3 +1,7 @@
+"""
+Data structures pertinent to the RealSense camera operation
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,12 +13,23 @@ import pyrealsense2 as rs
 
 @dataclass
 class Intrinsics:
+    """
+    Intrinsic parameters of a RealSense camera
+    """
+
+    # Camera resolution
     width: int
     height: int
+
+    # Focal lengths
     fx: float
     fy: float
+
+    # Coordinates of the principal point
     ppx: float
     ppy: float
+
+    # Distortion parameters
     coeffs: np.ndarray
     dist_model: rs.distortion
 
@@ -34,6 +49,16 @@ class Intrinsics:
 
     @property
     def K(self) -> np.ndarray:
+        r"""
+        Intrinsic parameters in the matrix representation:
+        .. math::
+            K = \begin{bmatrix}
+                f_x &   0 & c_x \\
+                  0 & f_y & c_y \\
+                  0 &   0 &   1
+            \end{bmatrix}
+        """
+
         return np.array([
             [self.fx,     0.0, self.ppx],
             [    0.0, self.fy, self.ppy],
@@ -42,6 +67,13 @@ class Intrinsics:
 
     @classmethod
     def from_rs(cls, intrinsics: rs.intrinsics) -> Intrinsics:
+        """
+        Construct an `Intrinsics` object from a RealSense camera intrinsics
+        object `pyrealsense2.intrinsics`
+
+        :param intrinsics: RealSense camera intrinsics object
+        """
+
         return cls(
             width=intrinsics.width, height=intrinsics.height,
 
@@ -54,6 +86,10 @@ class Intrinsics:
 
 
 class Stream:
+    """
+    RealSense camera stream descriptor
+    """
+
     def __init__(
             self,
             name: str,
@@ -67,6 +103,25 @@ class Stream:
             sid: int = 0,
             roi: tuple[int, int, int, int] | None = None
     ) -> None:
+        """
+        Construct a stream descriptor
+
+        :param name: Arbitrary name of the stream
+        :param stype: Stream type as a `pyrealsense2.stream` object
+        :param w_res: Horizontal resolution
+        :param h_res: Vertical resolution
+        :param dtype: Data type to be used as a `pyrealsense2.format` object
+        :param fps: Frame rate
+        :param extractor: Function extracting the `pyrealsense2.frame` representation
+                          from the raw `pyrealsense2.composite_frame` object
+        :param colorizer: Optional colorizer
+        :param sid: Optional stream index in the case of multiple streams of the same stream type `stype`
+                    available (e.g., RealSense stereoscopic cameras offer two streams for the
+                    `pyrealsense2.stream.infrared` type: `sid = 0` denotes the left IR camera,
+                    `sid = 1` the right one)
+        :param roi: Optional region of interest to be cropped as a tuple `(lt_x, lt_y, w, h)`
+        """
+
         self.name = name
         self.stype = stype
         self.w_res = w_res
@@ -94,6 +149,7 @@ class Stream:
                 self.roi_w, self.roi_h
             ) = roi
 
+            # Check validity of the ROI parameters
             if not (
                     0 <= self.roi_l < self.w_res and 0 <= self.roi_t < self.h_res
                     and self.roi_w > 0 and self.roi_h > 0
@@ -105,6 +161,10 @@ class Stream:
 
     @property
     def config(self) -> tuple:
+        """
+        Stream configuration tuple
+        """
+
         if self.sid > 0:
             return self.stype, self.sid, self.w_res, self.h_res, self.dtype, self.fps
 
@@ -112,10 +172,18 @@ class Stream:
 
     @property
     def resolution(self) -> tuple[int, int]:
+        """
+        WH resolution of the stream
+        """
+
         return self.w_res, self.h_res
 
     @property
     def roi(self) -> tuple[int, int, int, int] | None:
+        """
+        Region of the interest parameter tuple `(lt_x, lt_y, w, h)` or `None` if not set
+        """
+
         roi = (self.roi_l, self.roi_t, self.roi_w, self.roi_h)
 
         if None not in roi:
@@ -124,9 +192,21 @@ class Stream:
         return None
 
     def extract(self, composite_frame: rs.composite_frame) -> rs.frame:
+        """
+        Extract the `pyrealsense2.frame` object
+        from the raw `pyrealsense2.composite_frame` representation
+        """
+
         return self.extractor(composite_frame)
 
     def to_numpy(self, frame: rs.composite_frame | rs.frame) -> np.ndarray:
+        """
+        Convert a `pyrealsense2` frame to NumPy array
+
+        :param frame: Source frame
+        :return: The frame as a NumPy array
+        """
+
         if isinstance(frame, rs.composite_frame):
             frame = self.extract(frame)
 
@@ -135,12 +215,14 @@ class Stream:
 
         image = np.asanyarray(frame.get_data())
 
+        # Crop if ROI is set
         if self.roi is not None:
             image = image[
                 self.roi_t:self.roi_t + self.roi_h,
                 self.roi_l:self.roi_l + self.roi_w
             ]
 
+        # If the frame is single-channel, convert it to grayscale RGB
         if image.ndim == 2:
             return np.repeat(
                 image[:, :, np.newaxis],
@@ -155,10 +237,20 @@ class Stream:
 
     @property
     def profile(self) -> rs.video_stream_profile | None:
+        """
+        RealSense camera video stream profile associated with this stream
+        """
+
         return self._profile
 
     @profile.setter
     def profile(self, profile: rs.video_stream_profile) -> None:
+        """
+        Associate this stream with a video stream of an initialized RealSense camera
+        and get the corresponding intrinsic parameters
+        """
+
+        # Check if the stream profile matches this stream's parameters
         if (
             profile.stream_type() != self.stype
             or profile.format() != self.dtype
@@ -172,14 +264,27 @@ class Stream:
 
 
 class Streams(MutableMapping):
+    """
+    Container grouping multiple streams
+    """
+
     def __init__(self, streams: list[Stream]) -> None:
+        """
+        Construct the container
+
+        :param streams: List of individual stream descriptors. The stream descriptors must have
+                        unique names and cannot duplicitously refer to the same camera stream
+        """
+
         self._streams: dict[str, Stream] = {}
         self._stype_sids: list[tuple[rs.stream, int]] = []
 
         for stream in streams:
+            # Enforce unique stream names
             if stream.name in self:
                 raise ValueError
 
+            # Enforce unique camera streams
             if stream.stype in self._stype_sids:
                 if stream.sid <= 0:
                     raise ValueError
@@ -221,6 +326,10 @@ class Streams(MutableMapping):
 
     @property
     def lowest_resolution(self) -> tuple[int, int]:
+        """
+        The lowest WH resolution among all streams
+        """
+
         return min(
             [
                 stream.resolution
@@ -230,7 +339,15 @@ class Streams(MutableMapping):
         )
 
     def values(self) -> list[Stream]:
+        """
+        Get the stream descriptors
+        """
+
         return list(self._streams.values())
 
     def keys(self) -> list[str]:
+        """
+        Get the stream names
+        """
+
         return list(self._streams.keys())
