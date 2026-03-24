@@ -8,7 +8,7 @@ from camera.profiles import FHD_RGB, HD_DEPTH, HD_IR1, HD_IR2
 
 
 class RealsenseViewer:
-    def __init__(self) -> None:
+    def __init__(self, output_prefix: str | None = None) -> None:
         self.camera = RealsenseCamera([FHD_RGB, HD_DEPTH, HD_IR1, HD_IR2])
 
         self.window_name = 'RealSense Viewer'
@@ -20,6 +20,9 @@ class RealsenseViewer:
         self.fps = 0
         self.prev_time = time.time()
         self.frame_count = 0
+
+        self.output_prefix: str = output_prefix
+        self.writers: dict[str, cv2.VideoWriter] = {}
 
     @staticmethod
     def _process_depth(frame: np.ndarray) -> np.ndarray:
@@ -46,9 +49,12 @@ class RealsenseViewer:
         resized = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_LINEAR)
         return np.pad(resized, pad_width=((h_off,), (w_off,), (0,)))
 
-    def _catch_blank(self, frame: np.ndarray | None) -> np.ndarray:
+    def _catch_blank(self, frame: np.ndarray | None, is_rgb: bool = False) -> np.ndarray:
         if frame is None:
-            return np.zeros_like(self.camera.streams['color'].resolution)
+            if is_rgb:
+                return np.zeros_like(self.camera.streams['color'].resolution, dtype=np.uint8)
+
+            return np.zeros(self.camera.streams['depth'].resolution, dtype=np.uint16)
 
         return frame
 
@@ -80,6 +86,38 @@ class RealsenseViewer:
                 ir1 = frames[2] if len(frames) > 2 else None
                 ir2 = frames[3] if len(frames) > 3 else None
 
+                if self.output_prefix is not None:
+                    rec_color = cv2.cvtColor(self._catch_blank(color, is_rgb=True), cv2.COLOR_RGB2BGR)
+                    rec_depth = self._process_depth(self._catch_blank(depth))
+
+                    ir1_safe = self._catch_blank(ir1).astype(np.uint8)
+                    ir2_safe = self._catch_blank(ir2).astype(np.uint8)
+
+                    rec_dict = {
+                        'color': rec_color,
+                        'depth': rec_depth,
+                        'ir1': ir1_safe,
+                        'ir2': ir2_safe
+                    }
+
+                    if not self.writers:
+                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
+                        for name, f in rec_dict.items():
+                            h, w = f.shape[:2]
+                            fname = f'{self.output_prefix}_{name}.mp4'
+
+                            self.writers[name] = cv2.VideoWriter(
+                                filename=fname,
+                                fourcc=fourcc,
+                                fps=30.0,
+                                frameSize=(w, h)
+                            )
+                            print(f'Recording started: {fname} ({w}x{h} @ 30 FPS)')
+
+                    for name, f in rec_dict.items():
+                        self.writers[name].write(f)
+
                 streams: dict[int, tuple[np.ndarray, str]] = {
                     0: (color, 'Color (RGB)'),
                     1: (
@@ -87,17 +125,21 @@ class RealsenseViewer:
                         'Depth (Jet)'
                     ),
                     2: (
-                        self._catch_blank(ir1),
+                        self._catch_blank(ir1).astype(np.uint8),
                         'IR 1 (Left)'
                     ),
                     3: (
-                        self._catch_blank(ir2),
+                        self._catch_blank(ir2).astype(np.uint8),
                         'IR 2 (Right)'
                     )
                 }
 
                 self.stream_idx = cv2.getTrackbarPos('Stream', self.window_name)
                 display_img, stream_name = streams[self.stream_idx]
+
+                if display_img is None:
+                    display_img = np.zeros((720, 1280), dtype=np.uint8)
+
                 h, w = display_img.shape[:2]
 
                 cl = cv2.getTrackbarPos('Crop Left', self.window_name)
@@ -116,6 +158,10 @@ class RealsenseViewer:
                     if self.stream_idx == 0
                     else cropped_img
                 )
+
+                if view_img.ndim == 2:
+                    view_img = cv2.cvtColor(view_img, cv2.COLOR_GRAY2BGR)
+
                 view_img = self._letterbox(view_img, (self.win_w, self.win_h))
 
                 sh, sw = view_img.shape[:2]
@@ -150,10 +196,16 @@ class RealsenseViewer:
                     print(f'[{stream_name}] Crop: L={cl}, R={cr}, T={ct}, B={cb}')
 
         finally:
+            print('Cleaning up...')
+
+            for name, writer in self.writers.items():
+                writer.release()
+                print(f'Saved {name} stream to disk')
+
             self.camera.stop_streaming()
             cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
-    viewer = RealsenseViewer()
+    viewer = RealsenseViewer(output_prefix='session_1')
     viewer.run()
