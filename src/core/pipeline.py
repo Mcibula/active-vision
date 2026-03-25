@@ -31,7 +31,8 @@ class PipelineController:
             batch_size: int = 1,
             batch_timeout: float = 0.05,
             capture_limit: int = 500,
-            process_every: int = 1
+            process_every: int = 1,
+            output_video: str | None = None
     ) -> None:
         self.shutdown = threading.Event()
 
@@ -63,6 +64,9 @@ class PipelineController:
         self.batch_timeout: float = batch_timeout
         self.process_every: int = process_every
         self.visibility_thresh: float = 0.5
+
+        self.output_video: str = output_video
+        self.video_writer: cv2.VideoWriter | None = None
 
         self.logger: logging.Logger = get_logger('PipelineController', level=logging.INFO)
         self.monitor: PerformanceMonitor = PerformanceMonitor()
@@ -115,6 +119,11 @@ class PipelineController:
             t_cam.join(timeout=1.0)
             t_segm.join(timeout=1.0)
             t_pose.join(timeout=1.0)
+
+            if self.video_writer is not None:
+                self.video_writer.release()
+                self.logger.info(f'Session video saved to {self.output_video}')
+
             cv2.destroyAllWindows()
 
     def _camera_loop(self) -> None:
@@ -243,10 +252,25 @@ class PipelineController:
                     self._draw_pose(display, obj)
 
                 self._draw_hud(display)
-                cv2.imshow(
-                    'Inference',
-                    cv2.cvtColor(display, cv2.COLOR_RGB2BGR)
-                )
+
+                display_bgr = cv2.cvtColor(display, cv2.COLOR_RGB2BGR)
+                cv2.imshow('Inference', display_bgr)
+
+                if self.output_video is not None:
+                    if self.video_writer is None:
+                        h, w = display_bgr.shape[:2]
+                        fps = 30.0
+                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
+                        self.video_writer = cv2.VideoWriter(
+                            filename=self.output_video,
+                            fourcc=fourcc,
+                            fps=fps,
+                            frameSize=(w, h)
+                        )
+                        self.logger.info(f'Video Writer initialized: {w}x{h} @ {fps:.1f} FPS -> {self.output_video}')
+
+                    self.video_writer.write(display_bgr)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):

@@ -32,7 +32,8 @@ def main() -> Scene:
         batch_size=batch_size,
         batch_timeout=0.1 * batch_size,
         process_every=1,
-        capture_limit=100
+        capture_limit=1500,
+        output_video='session.mp4'
     )
     controller.run()
 
