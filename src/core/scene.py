@@ -25,7 +25,17 @@ if TYPE_CHECKING:
 
 
 class RigidObject:
-    def __init__(self, obj_id: int) -> None:
+    def __init__(
+            self,
+            obj_id: int,
+            max_snapshots: int = 100,
+            dupl_history: int = 5,
+            snap_subset: int = 5,
+            mse_thresh: float = 600.0,
+            kpt_thresh: int = 30,
+            eff_thresh: int = 600,
+            pose_interval: float = 0.2
+    ) -> None:
         self.obj_id: int = obj_id
         self._lock = threading.Lock()
 
@@ -42,13 +52,13 @@ class RigidObject:
         self._staged_depth: np.ndarray | None = None
         self._staged_bbox: BBox | None = None
 
-        self.max_snapshots: int = 100
-        self.dupl_history: int = 5
-        self.snap_subset: int = 5
-        self.mse_thresh: float = 600.0
-        self.kpt_thresh: int = 30
-        self.eff_thresh: int = 600
-        self.pose_interval: float = 0.2
+        self.max_snapshots: int = max_snapshots
+        self.dupl_history: int = dupl_history
+        self.snap_subset: int = snap_subset
+        self.mse_thresh: float = mse_thresh
+        self.kpt_thresh: int = kpt_thresh
+        self.eff_thresh: int = eff_thresh
+        self.pose_interval: float = pose_interval
 
     def __repr__(self) -> str:
         return (
