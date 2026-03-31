@@ -93,7 +93,7 @@ class Snapshot:
     @property
     def features(self) -> KeypointFeatures:
         """
-        Keypoint features computed from `Snapshot.rgb``
+        Keypoint features computed from `Snapshot.rgb`
         """
 
         return self._features
