@@ -6,6 +6,7 @@ import pyrealsense2 as rs
 
 from structures import Stream
 
+# Standard full HD, 30 FPS RGB stream
 FHD_RGB = Stream(
     name='color',
     stype=rs.stream.color,
@@ -17,6 +18,7 @@ FHD_RGB = Stream(
     roi=(rgb_roi := (504, 0, 1038, 1080))
 )
 
+# Testing HD depth stream with colorization
 HD_DEPTH = Stream(
     name='depth',
     stype=rs.stream.depth,
@@ -29,6 +31,7 @@ HD_DEPTH = Stream(
     roi=(411, 106, 478, 491)
 )
 
+# Production HD depth stream without colorization aligned with `FHD_RGB`
 HD_DEPTH_ALIGN = Stream(
     name='depth',
     stype=rs.stream.depth,
@@ -40,6 +43,7 @@ HD_DEPTH_ALIGN = Stream(
     roi=rgb_roi
 )
 
+# HD left infrared stream with colorization
 HD_IR1 = Stream(
     name='ir1',
     stype=rs.stream.infrared,
@@ -52,6 +56,7 @@ HD_IR1 = Stream(
     colorizer=rs.colorizer(color_scheme=2)
 )
 
+# HD right infrared stream with colorization
 HD_IR2 = Stream(
     name='ir2',
     stype=rs.stream.infrared,
