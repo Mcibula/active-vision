@@ -169,7 +169,7 @@ class RigidObject:
 
         pose_found = False
         if self.num_snapshots > 0:
-            pose: ObjectPose = feat_extractor.estimate_pose(
+            pose: ObjectPose | None = feat_extractor.estimate_pose(
                 query=feats,
                 query_bbox=bbox,
                 ref_obj=self
