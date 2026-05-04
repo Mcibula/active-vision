@@ -143,7 +143,8 @@ class PoseEstimator:
             n_refs: int = -1
     ) -> ObjectPose | None:
         """
-        Estimate the 6-DoF pose of an object
+        Estimate the 6-DoF pose of an object using preferably the 3D-to-3D rigid alignment
+        or the 2D-to-3D PnP solver as a fallback
 
         :param query: RGB crop of an object to find the pose of,
                       or its extracted features
@@ -152,7 +153,7 @@ class PoseEstimator:
         :param query_depth: Actual depth map crop corresponding to the `query` crop,
                             used for 3D-to-3D rigid alignment
         :param n_refs: Maximum number of recent snapshots to evaluate for matching.
-                       If `-1`, evaluates all available snapshots.
+                       If `-1`, evaluates all available snapshots
 
         :return: Estimated 6-DoF ObjectPose, or None if estimation fails
         """
