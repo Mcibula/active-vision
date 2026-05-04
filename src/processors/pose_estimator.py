@@ -142,6 +142,21 @@ class PoseEstimator:
             query_depth: np.ndarray | None = None,
             n_refs: int = -1
     ) -> ObjectPose | None:
+        """
+        Estimate the 6-DoF pose of an object
+
+        :param query: RGB crop of an object to find the pose of,
+                      or its extracted features
+        :param query_bbox: 2D bounding box of the queried object in the global frame
+        :param ref_obj: The target object instance containing the reference snapshots
+        :param query_depth: Actual depth map crop corresponding to the `query` crop,
+                            used for 3D-to-3D rigid alignment
+        :param n_refs: Maximum number of recent snapshots to evaluate for matching.
+                       If `-1`, evaluates all available snapshots.
+
+        :return: Estimated 6-DoF ObjectPose, or None if estimation fails
+        """
+
         if n_refs == 0:
             return None
 
