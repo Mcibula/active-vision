@@ -139,6 +139,7 @@ class PoseEstimator:
             query: np.ndarray | KeypointFeatures,
             query_bbox: BBox,
             ref_obj: RigidObject,
+            query_depth: np.ndarray | None = None,
             n_refs: int = -1
     ) -> ObjectPose | None:
         if n_refs == 0:
@@ -147,19 +148,19 @@ class PoseEstimator:
         if ref_obj.num_snapshots == 0:
             return None
 
-        qx1, qy1, qx2, qy2 = query_bbox
+        qx1, qy1, qx2, qy2 = query_bbox.xyxy
         if query_bbox.w < 10 or query_bbox.h < 10:
             return None
 
+        # Extract features from the query if raw
         if isinstance(query, np.ndarray):
             if query.ndim != 3 or query.shape[-1] != 3:
                 raise ValueError
 
-            q_crop: np.ndarray = query[qy1:qy2, qx1:qx2]
-            if q_crop.size == 0:
+            if query.size == 0:
                 return None
 
-            q_feats: KeypointFeatures = self.compute_features(q_crop)
+            q_feats: KeypointFeatures = self.compute_features(query)
         else:
             q_feats = query
 
@@ -171,6 +172,7 @@ class PoseEstimator:
             for snap in ref_obj.snapshots[:n_refs]
         ]
 
+        # Feature matching
         best_idx: int = -1
         best_score: int = 0
         best_matches: Tensor | None = None
@@ -179,6 +181,7 @@ class PoseEstimator:
             torch.inference_mode(),
             timer('PoseEstimator.estimate_pose.matching', self.logger, self.monitor)
         ):
+            # Find the best matching snapshot -> reference
             for idx, ref_feat in enumerate(ref_feats):
                 matches_out = self.matcher({
                     'image0': dict(ref_feat),
@@ -199,6 +202,7 @@ class PoseEstimator:
         if best_score < self.match_thresh:
             return None
 
+        # Process the winning snapshot
         best_snap: Snapshot = ref_obj.snapshots[best_idx]
         matches: np.ndarray = best_matches.cpu().numpy()
 
@@ -215,71 +219,170 @@ class PoseEstimator:
         if len(ref_kpts) < self.match_thresh:
             return None
 
+        # Geometry recovery
         with timer('PoseEstimation.estimate_pose.geometry', self.logger, self.monitor):
+            # Convert the keypoint coordinates local the `query` to global
             q_kpts_global = q_kpts.copy()
             q_kpts_global[:, 0] += qx1
             q_kpts_global[:, 1] += qy1
 
+            # Left-top corner bbox coordinates
             sx1, sy1, *_ = best_snap.bbox
-            depth_map = best_snap.depth.astype(np.float32) / 1000.0
-            sh, sw = depth_map.shape
 
+            # Convert the depth map to meters
+            ref_depth_map: np.ndarray = best_snap.depth.astype(np.float32) / 1000.0
+            sh, sw = ref_depth_map.shape
+
+            # Focal length, optical center
             fx, fy = self.intrinsics.fx, self.intrinsics.fy
             cx, cy = self.intrinsics.ppx, self.intrinsics.ppy
 
-            obj_points = []
-            img_points = []
+            # Point cloud stores
+            obj_points_3d = []
+            img_points_2d = []
+            live_points_3d = []
 
             for idx in range(len(ref_kpts)):
-                u, v = map(int, ref_kpts[idx])
+                # Reference lifting
+                u_ref, v_ref = map(int, ref_kpts[idx])
 
-                if not (0 <= u < sw and 0 <= v < sh):
+                # If the keypoint is outside the reference depth crop
+                if not (0 <= u_ref < sw and 0 <= v_ref < sh):
                     continue
 
-                z = depth_map[v, u]
+                # Get the corresponding point's depth
+                z_ref = ref_depth_map[v_ref, u_ref]
 
-                if z <= self.dist_min or z >= self.dist_max:
+                # Check the depth is within the valid range
+                if z_ref <= self.dist_min or z_ref >= self.dist_max:
                     continue
 
-                u_global = u + sx1
-                v_global = v + sy1
+                # Back-project reference
+                # Get the global coords of the ref keypoints
+                u_global_ref = u_ref + sx1
+                v_global_ref = v_ref + sy1
 
-                x = (u_global - cx) * z / fx
-                y = (v_global - cy) * z / fy
+                # Perform pinhole back-projection
+                x_ref = (u_global_ref - cx) * z_ref / fx
+                y_ref = (v_global_ref - cy) * z_ref / fy
 
-                obj_points.append([x, y, z])
-                img_points.append(q_kpts_global[idx])
+                obj_points_3d.append([x_ref, y_ref, z_ref])
+                img_points_2d.append(q_kpts_global[idx])
 
-            obj_points = np.array(obj_points, dtype=np.float32)
-            img_points = np.array(img_points, dtype=np.float32)
+                # Live lifting
+                live_points_3d.append(None)
 
-            if len(obj_points) < 4:
+                if query_depth is None:
+                    continue
+
+                # Look up depth using local coords
+                q_u_local, q_v_local = map(int, q_kpts[idx])
+                dh, dw = query_depth.shape
+
+                if not (0 <= q_u_local < dw and 0 <= q_v_local < dh):
+                    continue
+
+                z_live = query_depth[q_v_local, q_u_local] / 1000.0
+
+                if z_live <= self.dist_min or z_live >= self.dist_max:
+                    continue
+
+                # Back-project using global coords
+                q_u_global, q_v_global = map(int, q_kpts_global[idx])
+                x_live = (q_u_global - cx) * z_live / fx
+                y_live = (q_v_global - cy) * z_live / fy
+
+                live_points_3d[-1] = [x_live, y_live, z_live]
+
+            obj_points_3d = np.array(obj_points_3d, dtype=np.float32)
+            img_points_2d = np.array(img_points_2d, dtype=np.float32)
+
+            if len(obj_points_3d) < 4:
                 return None
 
-            centroid = np.mean(obj_points, axis=0)
-            obj_points -= centroid
+            # Center the reference points for PnP
+            centroid = np.mean(obj_points_3d, axis=0)
+            obj_points_centered = obj_points_3d - centroid
 
-        with timer('PoseEstimator.estimate_pose.pnp', self.logger, self.monitor):
-            success, rvec, tvec, _ = cv2.solvePnPRansac(
-                objectPoints=obj_points,
-                imagePoints=img_points,
-                cameraMatrix=self.intrinsics.K,
-                distCoeffs=self.intrinsics.coeffs,
-                iterationsCount=100,
-                reprojectionError=6.0,
-                confidence=0.99,
-                flags=cv2.SOLVEPNP_ITERATIVE
-            )
+        # Pose solving
+        pose_matrix = None
 
-            if not success:
-                return None
+        # Try 3D-to-3D rigid alignment
+        if query_depth is not None:
+            with timer('PoseEstimator.estimate_pose.rigid3d', self.logger, self.monitor):
+                # Filter points where both 3D clouds are valid
+                valid_ref = []
+                valid_live = []
 
-        R, _ = cv2.Rodrigues(rvec)
-        pose_6d = np.eye(4)
-        pose_6d[:3, :3] = R
-        pose_6d[:3, 3] = tvec.squeeze()
+                for r_pt, l_pt in zip(obj_points_3d, live_points_3d):
+                    if l_pt is None:
+                        continue
 
-        return ObjectPose.from_matrix(pose_6d)
+                    valid_ref.append(r_pt)
+                    valid_live.append(l_pt)
+
+                # Require at least 6 points for stable 3D alignment
+                if len(valid_ref) >= 6:
+                    valid_ref = np.array(valid_ref, dtype=np.float32)
+                    valid_live = np.array(valid_live, dtype=np.float32)
+
+                    c_ref = np.mean(valid_ref, axis=0)
+                    c_live = np.mean(valid_live, axis=0)
+
+                    # Estimate affine transform using RANSAC
+                    result = cv2.estimateAffine3D(
+                        src=valid_ref - c_ref,
+                        dst=valid_live - c_live
+                    )
+
+                    success = result[0]
+                    M = result[1] if success else None
+
+                    if success:
+                        M: np.ndarray
+                        R_affine = M[:3, :3]
+
+                        # Enforce rigid rotation (remove scale/shear via SVD)
+                        U, _, Vt = np.linalg.svd(R_affine)
+                        R_rigid = U @ Vt
+
+                        # Ensure it's a valid rotation, not a reflection
+                        if np.linalg.det(R_rigid) < 0:
+                            Vt[-1, :] *= -1
+                            R_rigid = U @ Vt
+
+                        # Absolute translation
+                        t_final = c_live - (R_rigid @ c_ref)
+
+                        pose_matrix = np.eye(4)
+                        pose_matrix[:3, :3] = R_rigid
+                        pose_matrix[:3, 3] = t_final
+
+        # If RA unsuccessful, fall back to 2D-to-3D PnP
+        if pose_matrix is None:
+            with timer('PoseEstimator.estimate_pose.pnp', self.logger, self.monitor):
+                success, rvec, tvec, _ = cv2.solvePnPRansac(
+                    objectPoints=obj_points_centered,
+                    imagePoints=img_points_2d,
+                    cameraMatrix=self.intrinsics.K,
+                    distCoeffs=self.intrinsics.coeffs,
+                    iterationsCount=100,
+                    reprojectionError=6.0,
+                    confidence=0.99,
+                    flags=cv2.SOLVEPNP_ITERATIVE
+                )
+
+                if not success:
+                    return None
+
+                R, _ = cv2.Rodrigues(rvec)
+                pose_matrix = np.eye(4)
+                pose_matrix[:3, :3] = R
+
+                # Get absolute position
+                pose_matrix[:3, 3] = tvec.squeeze() + centroid
+
+        return ObjectPose.from_matrix(pose_matrix)
 
     @staticmethod
     def _filter_kpts(kpts: np.ndarray, mask: np.ndarray) -> np.ndarray:
