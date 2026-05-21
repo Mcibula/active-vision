@@ -18,10 +18,13 @@ class TrajVectorizer:
         self.n_rot: int = num_rcoeffs
 
     def __call__(self, traj: Trajectory) -> np.ndarray:
-        if len(traj) < 5:
+        positions = traj.positions
+        orientations = traj.orientations
+
+        if positions is None or orientations is None or len(positions) < 5:
             return np.zeros(shape=(self.n_pos * 3 + self.n_rot * 3))
 
-        d_pos = np.diff(traj.positions, axis=0)
+        d_pos = np.diff(positions, axis=0)
 
         pos_resampled = self._resample(d_pos)
         pos_spectral: np.ndarray = dct(
@@ -30,7 +33,7 @@ class TrajVectorizer:
         )
         pos_coeffs: np.ndarray = pos_spectral[:self.n_pos].flatten()
 
-        rots = Rotation.from_euler('xyz', traj.orientations)
+        rots = Rotation.from_euler('xyz', orientations)
         r_cur = rots[:-1]
         r_next = rots[1:]
         r_diff = r_next * r_cur.inv()
