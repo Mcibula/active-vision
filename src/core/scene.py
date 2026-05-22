@@ -145,6 +145,9 @@ class RigidObject:
         depth_map: np.ndarray = depth_maps[best_idx]
         bbox: BBox = bboxes[best_idx]
 
+        # RGB, mask, and depth crops must share the bbox-local half-open slice frame
+        assert rgb.shape[:2] == mask.shape == depth_map.shape == bbox.shape
+
         with self._lock:
             self._staged_rgb = rgb
             self._staged_mask = mask
@@ -426,7 +429,7 @@ class Scene:
                     snapshots=obj_record.snapshots,
                     masks=obj_record.masks,
                     depth_maps=[
-                        d_frames[obj_record.frame_ids[xyxy_id]][y1:y2 + 1, x1:x2 + 1]
+                        d_frames[obj_record.frame_ids[xyxy_id]][y1:y2, x1:x2]
                         for xyxy_id, (x1, y1, x2, y2) in enumerate(obj_record.xyxy)
                     ],
                     bboxes=obj_record.xyxy,
