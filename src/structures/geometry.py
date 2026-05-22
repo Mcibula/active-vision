@@ -644,7 +644,8 @@ class Trajectory:
             )
 
         # Permute trajectory dimensions, so they are aligned with the displayed space
-        px, py, pz = pos[:, 0], pos[:, 2], -pos[:, 1]
+        # The camera is the origin; objects below it should appear below the origin
+        px, py, pz = pos[:, 0], pos[:, 2], pos[:, 1]
         p_traj = np.column_stack((px, py, pz))
 
         # Infer limits and scale
@@ -716,13 +717,13 @@ class Trajectory:
                 # Object origin
                 rpx = pose.pos[0] * unit_mult
                 rpy = pose.pos[2] * unit_mult
-                rpz = -pose.pos[1] * unit_mult
+                rpz = pose.pos[1] * unit_mult
 
                 # Direction vectors
                 R = Rotation.from_euler('xyz', pose.rot).as_matrix()
-                vx_x, vx_y, vx_z = R[0, 0], R[2, 0], -R[1, 0]
-                vy_x, vy_y, vy_z = R[0, 1], R[2, 1], -R[1, 1]
-                vz_x, vz_y, vz_z = R[0, 2], R[2, 2], -R[1, 2]
+                vx_x, vx_y, vx_z = R[0, 0], R[2, 0], R[1, 0]
+                vy_x, vy_y, vy_z = R[0, 1], R[2, 1], R[1, 1]
+                vz_x, vz_y, vz_z = R[0, 2], R[2, 2], R[1, 2]
 
                 # Plot the triads
                 ax.quiver(
