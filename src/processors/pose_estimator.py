@@ -140,6 +140,7 @@ class PoseEstimator:
             query_bbox: BBox,
             ref_obj: RigidObject,
             query_depth: np.ndarray | None = None,
+            query_mask: np.ndarray | None = None,
             n_refs: int = -1
     ) -> ObjectPose | None:
         """
@@ -152,6 +153,8 @@ class PoseEstimator:
         :param ref_obj: The target object instance containing the reference snapshots
         :param query_depth: Actual depth map crop corresponding to the `query` crop,
                             used for 3D-to-3D rigid alignment
+        :param query_mask: Binary segmentation mask corresponding to the `query` crop,
+                           used to reject background matches in the live frame
         :param n_refs: Maximum number of recent snapshots to evaluate for matching.
                        If `-1`, evaluates all available snapshots
 
@@ -229,6 +232,10 @@ class PoseEstimator:
         q_kpts = q_kpts[matches[:, 1]]
 
         valid_kpts = self._filter_kpts(ref_kpts, best_snap.mask)
+        if query_mask is not None:
+            valid_query_kpts = self._filter_kpts(q_kpts, query_mask)
+            valid_kpts = np.intersect1d(valid_kpts, valid_query_kpts)
+
         ref_kpts = ref_kpts[valid_kpts]
         q_kpts = q_kpts[valid_kpts]
 
@@ -367,12 +374,9 @@ class PoseEstimator:
                             Vt[-1, :] *= -1
                             R_rigid = U @ Vt
 
-                        # Absolute translation
-                        t_final = c_live - (R_rigid @ c_ref)
-
                         pose_matrix = np.eye(4)
                         pose_matrix[:3, :3] = R_rigid
-                        pose_matrix[:3, 3] = t_final
+                        pose_matrix[:3, 3] = c_live
 
         # If RA unsuccessful, fall back to 2D-to-3D PnP
         if pose_matrix is None:
@@ -395,8 +399,7 @@ class PoseEstimator:
                 pose_matrix = np.eye(4)
                 pose_matrix[:3, :3] = R
 
-                # Get absolute position
-                pose_matrix[:3, 3] = tvec.squeeze() + centroid
+                pose_matrix[:3, 3] = tvec.squeeze()
 
         return ObjectPose.from_matrix(pose_matrix)
 
@@ -408,7 +411,7 @@ class PoseEstimator:
         for idx in range(len(kpts)):
             x, y = map(int, kpts[idx])
 
-            if 0 <= x < h and 0 <= y < w and mask[x, y] == 1:
+            if 0 <= y < h and 0 <= x < w and mask[y, x] > 0:
                 valid.append(idx)
 
         return np.array(valid, dtype=np.int32)

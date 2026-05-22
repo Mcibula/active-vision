@@ -175,7 +175,9 @@ class RigidObject:
             pose: ObjectPose | None = feat_extractor.estimate_pose(
                 query=feats,
                 query_bbox=bbox,
-                ref_obj=self
+                ref_obj=self,
+                query_depth=depth_map,
+                query_mask=mask
             )
 
             if pose is not None:
