@@ -222,6 +222,7 @@ class PipelineController:
 
     def _display_loop(self) -> None:
         last_annotated: np.ndarray | None = None
+        video_frame_size: tuple[int, int] | None = None
 
         while not self.shutdown.is_set():
             with contextlib.suppress(queue.Empty):
@@ -243,6 +244,12 @@ class PipelineController:
 
             if frame is not None:
                 display: np.ndarray = frame.copy()
+                target_shape = (
+                    live.shape[:2]
+                    if live is not None
+                    else display.shape[:2]
+                )
+                display = self._resize_to_shape(display, target_shape)
 
                 now = time.time()
                 for obj in list(self.scene):
@@ -259,6 +266,7 @@ class PipelineController:
                 if self.output_video is not None:
                     if self.video_writer is None:
                         h, w = display_bgr.shape[:2]
+                        video_frame_size = (w, h)
                         fps = 30.0
                         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
@@ -268,8 +276,18 @@ class PipelineController:
                             fps=fps,
                             frameSize=(w, h)
                         )
+                        if not self.video_writer.isOpened():
+                            self.logger.error('Failed to initialize Video Writer: %s', self.output_video)
+                            self.video_writer = None
+                            self.output_video = None
+                            continue
+
                         self.logger.info(f'Video Writer initialized: {w}x{h} @ {fps:.1f} FPS -> {self.output_video}')
 
+                    if video_frame_size is not None and display_bgr.shape[1::-1] != video_frame_size:
+                        display_bgr = cv2.resize(display_bgr, video_frame_size, interpolation=cv2.INTER_LINEAR)
+
+                    display_bgr = np.ascontiguousarray(display_bgr, dtype=np.uint8)
                     self.video_writer.write(display_bgr)
 
             key = cv2.waitKey(1) & 0xFF
@@ -283,6 +301,14 @@ class PipelineController:
                     if self.display_mode == 'live'
                     else 'live'
                 )
+
+    @staticmethod
+    def _resize_to_shape(frame: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
+        if frame.shape[:2] == target_shape:
+            return frame
+
+        target_h, target_w = target_shape
+        return cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
 
     @timer('PipelineController._draw_hud')
     def _draw_hud(self, frame: np.ndarray) -> None:
