@@ -11,7 +11,7 @@ from ultralytics import SAM, YOLO, YOLOE
 from ultralytics.utils.checks import check_imgsz
 
 from structures import BBox, TrackRecord
-from utils.image import crop_zeros, resize_imgs
+from utils.image import resize_imgs
 from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
 
@@ -72,6 +72,18 @@ class Segmenter:
             src: list[np.ndarray] = [src]
 
         frame_h, frame_w, frame_c = src[0].shape
+        correct_h, correct_w = check_imgsz(
+            imgsz=[frame_h, frame_w],
+            stride=32
+        )
+
+        scale = min(correct_h / frame_h, correct_w / frame_w)
+        unpad_h = round(frame_h * scale)
+        unpad_w = round(frame_w * scale)
+        pad_h = correct_h - unpad_h
+        pad_w = correct_w - unpad_w
+        pad_top = round(pad_h / 2 - 0.1)
+        pad_left = round(pad_w / 2 - 0.1)
 
         with torch.no_grad():
             with timer('Segmenter.track.preprocess', self.logger, self.monitor):
@@ -86,10 +98,6 @@ class Segmenter:
                 except ValueError as e:
                     raise ValueError('All the source frames must have the same shape.') from e
 
-                correct_h, correct_w = check_imgsz(
-                    imgsz=[frame_h, frame_w],
-                    stride=32
-                )
                 model_in = (
                     frames
                     if correct_h == frame_h and correct_w == frame_w
@@ -116,6 +124,9 @@ class Segmenter:
                 if r.boxes.id is None:
                     continue
 
+                if r.masks is None:
+                    continue
+
                 obj_ids: list[float] = r.boxes.id.cpu().tolist()
                 n_objs: int = len(obj_ids)
 
@@ -126,19 +137,52 @@ class Segmenter:
 
                 # CHW frame, O1HW masks
                 frame: Tensor = frames[frame_idx] * 255
-                upscaled_masks: Tensor = resize_imgs(
-                    src=r.masks.data.unsqueeze(1),
+                masks: Tensor = r.masks.data
+
+                if masks.shape[-2:] == (correct_h, correct_w):
+                    masks = masks[
+                        :,
+                        pad_top:pad_top + unpad_h,
+                        pad_left:pad_left + unpad_w
+                    ]
+
+                upscaled_masks_ch: Tensor = resize_imgs(
+                    src=masks.unsqueeze(1),
                     to_shape=(frame_h, frame_w),
                     dim_order='nchw',
                     stretch=True
                 )
+                upscaled_masks: Tensor = upscaled_masks_ch.squeeze(1)
 
                 # OCHW masked frames, OHW masks
-                masked_frames: Tensor = upscaled_masks * frame.expand(n_objs, -1, -1, -1)
-                upscaled_masks: Tensor = upscaled_masks.squeeze(1)
+                masked_frames: Tensor = upscaled_masks_ch * frame.expand(n_objs, -1, -1, -1)
 
                 for idx, obj_id in enumerate(obj_ids):
                     obj_id: int = int(obj_id)
+
+                    x1, y1, x2, y2 = xyxy[idx]
+                    if (correct_h, correct_w) != (frame_h, frame_w):
+                        x1 = (x1 - pad_left) / scale
+                        x2 = (x2 - pad_left) / scale
+                        y1 = (y1 - pad_top) / scale
+                        y2 = (y2 - pad_top) / scale
+
+                    x1 = max(0, min(frame_w, int(np.floor(x1))))
+                    y1 = max(0, min(frame_h, int(np.floor(y1))))
+                    x2 = max(0, min(frame_w, int(np.ceil(x2))))
+                    y2 = max(0, min(frame_h, int(np.ceil(y2))))
+
+                    if x2 <= x1 or y2 <= y1:
+                        continue
+
+                    # BBox-aligned crops. The local origin of the RGB crop, mask, and depth crop
+                    # is always the bbox left-top corner.
+                    cropped_mask = upscaled_masks[idx, y1:y2, x1:x2]
+                    cropped_snapshot = masked_frames[idx].permute(1, 2, 0)[y1:y2, x1:x2]
+
+                    # Blank frame or blank mask
+                    if cropped_mask.numel() == 0 or torch.count_nonzero(cropped_mask) == 0:
+                        continue
 
                     if obj_id not in objects:
                         objects[obj_id] = TrackRecord(
@@ -149,24 +193,9 @@ class Segmenter:
                         )
 
                     record: TrackRecord = objects[obj_id]
-
-                    x1, y1, x2, y2 = xyxy[idx]
-                    x1 = max(0, int(x1))
-                    y1 = max(0, int(y1))
-                    x2 = min(correct_w, int(x2))
-                    y2 = min(correct_h, int(y2))
                     record.xyxy.append(BBox(x1, y1, x2, y2))
                     record.frame_ids.append(frame_idx)
-
-                    # HW mask, HWC snapshot
-                    cropped_mask = crop_zeros(upscaled_masks[idx])
-                    cropped_snapshot = crop_zeros(masked_frames[idx].permute(1, 2, 0))
-
-                    # Blank frame or blank mask
-                    if cropped_snapshot is None or cropped_mask is None:
-                        continue
-
-                    record.masks.append(cropped_mask.cpu().numpy().astype(np.uint8))
+                    record.masks.append((cropped_mask > 0.5).cpu().numpy().astype(np.uint8))
                     record.snapshots.append(cropped_snapshot.cpu().numpy().astype(np.uint8))
 
         return objects
