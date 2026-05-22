@@ -21,7 +21,7 @@ class RealsenseViewer:
         self.prev_time = time.time()
         self.frame_count = 0
 
-        self.output_prefix: str = output_prefix
+        self.output_prefix: str | None = output_prefix
         self.writers: dict[str, cv2.VideoWriter] = {}
 
     @staticmethod
