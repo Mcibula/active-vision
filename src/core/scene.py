@@ -413,7 +413,7 @@ class RigidObject:
                 snap_id = sel_ids[idx]
 
                 ax.imshow(self.snapshots[snap_id].rgb)
-                ax.set_title(f'#{snap_id}')
+                ax.set_title(fr'\#{snap_id}')
 
         fig.tight_layout()
         plt.show()
