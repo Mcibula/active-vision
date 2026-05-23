@@ -1,4 +1,4 @@
-from .conceptualizers import MotionConceptExtractor
+from .conceptualizers import MotionConceptExtractor, VisualConceptExtractor
 from .pose_estimator import PoseEstimator
 from .segmenter import Segmenter
 from .traj_vectorizer import TrajVectorizer
