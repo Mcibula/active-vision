@@ -77,7 +77,7 @@ def load_traj_export(
 
 def load_traj_exports(
         export_dir: str | Path,
-        manifest: str | None = None,
+        manifest: str | Path | None = None,
         extractor: MotionConceptExtractor | None = None
 ) -> list[ConceptPoint]:
     """
