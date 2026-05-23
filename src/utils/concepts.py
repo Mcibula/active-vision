@@ -96,7 +96,7 @@ def load_traj_exports(
     if manifest is None:
         return [
             load_traj_export(path, extractor=extractor)
-            for path in sorted(export_dir.glob('*.npz'))
+            for path in sorted(export_dir.rglob('*.npz'))
         ]
 
     manifest = Path(manifest)
