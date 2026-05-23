@@ -41,6 +41,7 @@ class RigidObject:
 
         self._snapshots: list[Snapshot] = []
         self._trajectory: Trajectory = Trajectory(capacity=None)
+        self._pose_diagnostics: list[dict[str, Any]] = []
 
         self.last_seen: BBox = BBox.null()
         self.last_updated: float = 0.0
@@ -91,6 +92,7 @@ class RigidObject:
         self._staged_mask = None
         self._staged_depth = None
         self._staged_bbox = None
+        self._pose_diagnostics = getattr(self, '_pose_diagnostics', [])
 
     @property
     def num_snapshots(self) -> int:
@@ -113,11 +115,27 @@ class RigidObject:
     def trajectory(self) -> Trajectory:
         return self._trajectory
 
+    @property
+    def pose_diagnostics(self) -> list[dict[str, Any]]:
+        return self._pose_diagnostics
+
+    @property
+    def last_pose_diagnostics(self) -> dict[str, Any] | None:
+        return self._pose_diagnostics[-1] if self._pose_diagnostics else None
+
     def add_pose(self, obj_pose: ObjectPose) -> None:
         with self._lock:
             self._trajectory.append(obj_pose)
 
         self.last_updated = time.time()
+
+    def add_pose_diagnostics(self, diagnostics: dict[str, Any]) -> None:
+        diagnostics = diagnostics.copy()
+        diagnostics['obj_id'] = self.obj_id
+        diagnostics['timestamp'] = time.time()
+
+        with self._lock:
+            self._pose_diagnostics.append(diagnostics)
 
     def register_observations(
             self,
@@ -179,6 +197,7 @@ class RigidObject:
                 query_depth=depth_map,
                 query_mask=mask
             )
+            self.add_pose_diagnostics(feat_extractor.last_diagnostics)
 
             if pose is not None:
                 self.add_pose(pose)

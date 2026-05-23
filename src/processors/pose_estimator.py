@@ -64,6 +64,7 @@ class PoseEstimator:
         self.matcher = LightGlue(features=f'dedode{descriptor_weights[0].lower()}').to(self.device)
         self.score_thresh: float = score_thresh
         self.match_thresh: int = match_thresh
+        self.last_diagnostics: dict[str, Any] = {}
 
         self.logger: logging.Logger = get_logger('PoseEstimator', level=logging.INFO)
         self.monitor: PerformanceMonitor = PerformanceMonitor()
@@ -146,6 +147,7 @@ class PoseEstimator:
             ref_obj: RigidObject,
             query_depth: np.ndarray | None = None,
             query_mask: np.ndarray | None = None,
+            mode: Literal['pnp', 'hybrid'] | None = None,
             n_refs: int = -1
     ) -> ObjectPose | None:
         """
@@ -173,14 +175,37 @@ class PoseEstimator:
         if mode not in ('pnp', 'hybrid'):
             raise ValueError
 
+        diag: dict[str, Any] = {
+            'mode': mode,
+            'success': False,
+            'solver': None,
+            'reason': None,
+            'best_ref_idx': None,
+            'raw_matches': 0,
+            'score_matches': 0,
+            'mask_matches': 0,
+            'ref_3d_points': 0,
+            'live_3d_points': 0,
+            'pnp_inliers': 0,
+            'query_bbox': query_bbox.xyxy
+        }
+        self.last_diagnostics = diag
+
+        def fail(reason: str) -> None:
+            diag['reason'] = reason
+            self.last_diagnostics = diag
+
         if n_refs == 0:
+            fail('no_reference_requested')
             return None
 
         if ref_obj.num_snapshots == 0:
+            fail('no_reference_snapshots')
             return None
 
         qx1, qy1, qx2, qy2 = query_bbox.xyxy
         if query_bbox.w < 10 or query_bbox.h < 10:
+            fail('query_bbox_too_small')
             return None
 
         # Extract features from the query if raw
@@ -189,6 +214,7 @@ class PoseEstimator:
                 raise ValueError
 
             if query.size == 0:
+                fail('empty_query_image')
                 return None
 
             q_feats: KeypointFeatures = self.compute_features(query)
@@ -206,6 +232,7 @@ class PoseEstimator:
         # Feature matching
         best_idx: int = -1
         best_score: int = 0
+        best_raw_count: int = 0
         best_matches: Tensor | None = None
 
         with (
@@ -228,14 +255,20 @@ class PoseEstimator:
                 if n_valid > best_score:
                     best_score = n_valid
                     best_idx = idx
+                    best_raw_count = len(scores)
                     best_matches = matches[valid]                       # (M, 2)
 
         if best_score < self.match_thresh:
+            diag['score_matches'] = best_score
+            fail('not_enough_feature_matches')
             return None
 
         # Process the winning snapshot
         best_snap: Snapshot = ref_obj.snapshots[best_idx]
         matches: np.ndarray = best_matches.cpu().numpy()
+        diag['best_ref_idx'] = best_idx
+        diag['raw_matches'] = best_raw_count
+        diag['score_matches'] = best_score
 
         ref_kpts = best_snap.features.keypoints[0].cpu().numpy()
         ref_kpts = ref_kpts[matches[:, 0]]
@@ -250,8 +283,10 @@ class PoseEstimator:
 
         ref_kpts = ref_kpts[valid_kpts]
         q_kpts = q_kpts[valid_kpts]
+        diag['mask_matches'] = len(ref_kpts)
 
         if len(ref_kpts) < self.match_thresh:
+            fail('not_enough_masked_matches')
             return None
 
         # Geometry recovery
@@ -331,8 +366,14 @@ class PoseEstimator:
 
             obj_points_3d = np.array(obj_points_3d, dtype=np.float32)
             img_points_2d = np.array(img_points_2d, dtype=np.float32)
+            diag['ref_3d_points'] = len(obj_points_3d)
+            diag['live_3d_points'] = sum(
+                pt is not None
+                for pt in live_points_3d
+            )
 
             if len(obj_points_3d) < 4:
+                fail('not_enough_reference_depth_points')
                 return None
 
             # Center the reference points for PnP
@@ -389,11 +430,12 @@ class PoseEstimator:
                         pose_matrix = np.eye(4)
                         pose_matrix[:3, :3] = R_rigid
                         pose_matrix[:3, 3] = c_live
+                        diag['solver'] = 'rigid3d'
 
         # If RA unsuccessful, fall back to 2D-to-3D PnP
         if pose_matrix is None:
             with timer('PoseEstimator.estimate_pose.pnp', self.logger, self.monitor):
-                success, rvec, tvec, _ = cv2.solvePnPRansac(
+                success, rvec, tvec, inliers = cv2.solvePnPRansac(
                     objectPoints=obj_points_centered,
                     imagePoints=img_points_2d,
                     cameraMatrix=self.intrinsics.K,
@@ -403,8 +445,10 @@ class PoseEstimator:
                     confidence=0.99,
                     flags=cv2.SOLVEPNP_ITERATIVE
                 )
+                diag['pnp_inliers'] = 0 if inliers is None else len(inliers)
 
                 if not success:
+                    fail('pnp_failed')
                     return None
 
                 R, _ = cv2.Rodrigues(rvec)
@@ -412,6 +456,11 @@ class PoseEstimator:
                 pose_matrix[:3, :3] = R
 
                 pose_matrix[:3, 3] = tvec.squeeze()
+                diag['solver'] = 'pnp'
+
+        diag['success'] = True
+        diag['reason'] = 'ok'
+        self.last_diagnostics = diag
 
         return ObjectPose.from_matrix(pose_matrix)
 
