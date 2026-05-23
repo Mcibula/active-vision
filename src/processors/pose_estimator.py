@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 import cv2
 import kornia
@@ -27,7 +27,8 @@ class PoseEstimator:
             descriptor_weights: str = 'G-upright',
             score_thresh: float = 0.5,
             match_thresh: int = 10,
-            estimation_rng: tuple[float, float] = (0.1, 5.0)
+            estimation_rng: tuple[float, float] = (0.1, 5.0),
+            solver_mode: Literal['pnp', 'hybrid'] = 'hybrid'
     ) -> None:
         if match_thresh < 1:
             raise ValueError
@@ -39,8 +40,12 @@ class PoseEstimator:
         if self.dist_min < 0.0 or self.dist_max < 0.0 or self.dist_max <= self.dist_min:
             raise ValueError
 
+        if solver_mode not in ('pnp', 'hybrid'):
+            raise ValueError
+
         self.device: torch.device = infer_device()
         self.intrinsics: Intrinsics = camera_intrinsics
+        self.solver_mode: Literal['pnp', 'hybrid'] = solver_mode
 
         torch.backends.cudnn.benchmark = True
 
@@ -155,11 +160,18 @@ class PoseEstimator:
                             used for 3D-to-3D rigid alignment
         :param query_mask: Binary segmentation mask corresponding to the `query` crop,
                            used to reject background matches in the live frame
+        :param mode: Pose solver mode. If `None`, uses `PoseEstimator.solver_mode`;
+                     `'hybrid'` tries 3D-to-3D rigid alignment first and falls back to PnP;
+                     `'pnp'` skips the 3D-to-3D branch
         :param n_refs: Maximum number of recent snapshots to evaluate for matching.
                        If `-1`, evaluates all available snapshots
 
         :return: Estimated 6-DoF ObjectPose, or None if estimation fails
         """
+
+        mode = self.solver_mode if mode is None else mode
+        if mode not in ('pnp', 'hybrid'):
+            raise ValueError
 
         if n_refs == 0:
             return None
@@ -331,7 +343,7 @@ class PoseEstimator:
         pose_matrix = None
 
         # Try 3D-to-3D rigid alignment
-        if query_depth is not None:
+        if mode == 'hybrid' and query_depth is not None:
             with timer('PoseEstimator.estimate_pose.rigid3d', self.logger, self.monitor):
                 # Filter points where both 3D clouds are valid
                 valid_ref = []
