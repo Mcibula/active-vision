@@ -8,8 +8,8 @@ from typing import Any
 
 import numpy as np
 
-from processors import TrajVectorizer
 from structures import ConceptDomain, ConceptPoint, ConceptSpace, QualityDimension, Trajectory
+from .traj_vectorizer import TrajVectorizer
 
 
 class MotionConceptExtractor:
