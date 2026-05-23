@@ -17,6 +17,7 @@ from structures import BBox, KeypointFeatures, ObjectPose, Snapshot, Trajectory
 from utils.image import mse, sharpness
 from utils.logger import PerformanceMonitor, get_logger, timer
 from utils.misc import infer_device
+from utils.signal import OneEuroFilter
 
 if TYPE_CHECKING:
     from processors.pose_estimator import PoseEstimator
@@ -34,7 +35,8 @@ class RigidObject:
             mse_thresh: float = 600.0,
             kpt_thresh: int = 30,
             eff_thresh: int = 600,
-            pose_interval: float = 0.2
+            pose_interval: float = 0.2,
+            pose_filter: bool = True
     ) -> None:
         self.obj_id: int = obj_id
         self._lock = threading.Lock()
@@ -60,6 +62,12 @@ class RigidObject:
         self.kpt_thresh: int = kpt_thresh
         self.eff_thresh: int = eff_thresh
         self.pose_interval: float = pose_interval
+        self.pose_filter: bool = pose_filter
+        self.filter_min_cutoff: float = 1.0
+        self.filter_beta: float = 0.2
+        self.filter_d_cutoff: float = 1.0
+        self._pose_filters: dict[str, OneEuroFilter] = {}
+        self._reset_pose_filters()
 
     def __repr__(self) -> str:
         return (
@@ -75,7 +83,8 @@ class RigidObject:
         transient = [
             '_lock', 'is_busy',
             '_staged_rgb', '_staged_mask',
-            '_staged_depth', '_staged_bbox'
+            '_staged_depth', '_staged_bbox',
+            '_pose_filters'
         ]
 
         for key in transient:
@@ -93,6 +102,12 @@ class RigidObject:
         self._staged_depth = None
         self._staged_bbox = None
         self._pose_diagnostics = getattr(self, '_pose_diagnostics', [])
+        self.pose_filter = getattr(self, 'pose_filter', True)
+        self.filter_min_cutoff = getattr(self, 'filter_min_cutoff', 1.0)
+        self.filter_beta = getattr(self, 'filter_beta', 0.2)
+        self.filter_d_cutoff = getattr(self, 'filter_d_cutoff', 1.0)
+        self._pose_filters = {}
+        self._reset_pose_filters()
 
     @property
     def num_snapshots(self) -> int:
@@ -136,6 +151,41 @@ class RigidObject:
 
         with self._lock:
             self._pose_diagnostics.append(diagnostics)
+
+    def _reset_pose_filters(self) -> None:
+        self._pose_filters = {
+            dim: OneEuroFilter(
+                min_cutoff=self.filter_min_cutoff,
+                beta=self.filter_beta,
+                d_cutoff=self.filter_d_cutoff
+            )
+            for dim in ('x', 'y', 'z', 'rx', 'ry', 'rz')
+        }
+
+    def _filter_pose(self, pose: ObjectPose) -> ObjectPose:
+        if not self.pose_filter:
+            return pose
+
+        t = pose.timestamp
+        values = {
+            'x': pose.x, 'y': pose.y, 'z': pose.z,
+            'rx': pose.rx, 'ry': pose.ry, 'rz': pose.rz
+        }
+        filtered = {
+            dim: self._pose_filters[dim](value, t=t)
+            for dim, value in values.items()
+        }
+
+        filtered_pose = ObjectPose(
+            filtered['x'], filtered['y'], filtered['z'],
+            filtered['rx'], filtered['ry'], filtered['rz'],
+            is_valid=True
+        )
+
+        # The filtered value still belongs to the same estimator observation
+        filtered_pose._timestamp = pose.timestamp
+
+        return filtered_pose
 
     def register_observations(
             self,
@@ -200,10 +250,17 @@ class RigidObject:
             self.add_pose_diagnostics(feat_extractor.last_diagnostics)
 
             if pose is not None:
-                self.add_pose(pose)
+                filtered_pose = self._filter_pose(pose)
+                if self._pose_diagnostics:
+                    self._pose_diagnostics[-1]['raw_pose'] = pose.pose_6d
+                    self._pose_diagnostics[-1]['filtered_pose'] = filtered_pose.pose_6d
+                    self._pose_diagnostics[-1]['pose_filter'] = self.pose_filter
+
+                self.add_pose(filtered_pose)
                 self.last_seen = bbox
                 pose_found = True
             else:
+                self._reset_pose_filters()
                 self.add_pose(ObjectPose.lost())
 
             self.last_pose_time = time.time()
