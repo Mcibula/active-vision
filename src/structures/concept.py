@@ -4,7 +4,7 @@ Data structures operating with conceptual spaces
 
 from __future__ import annotations
 
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import numpy as np
 
@@ -528,3 +528,420 @@ class ConceptMemory:
         memory.extend(points)
 
         return memory
+
+
+class ConceptEntity:
+    """
+    Entity represented by optional projections into multiple conceptual spaces
+    """
+
+    def __init__(
+            self,
+            entity_id: str,
+            projections: dict[str, ConceptPoint] | None = None,
+            label: str | None = None,
+            metadata: dict[str, Any] | None = None
+    ) -> None:
+        """
+        Initialize a conceptual entity with projections into named spaces
+
+        :param entity_id: Stable entity identifier
+        :param projections: Optional conceptual projections indexed by space key
+        :param label: Optional class/category label
+        :param metadata: Optional non-conceptual provenance and quality data
+        """
+
+        if not entity_id:
+            raise ValueError
+
+        self.entity_id: str = entity_id
+        self.label: str | None = label
+        self.metadata: dict[str, Any] = (
+            metadata.copy()
+            if metadata is not None
+            else {}
+        )
+        self._projections: dict[str, ConceptPoint] = {}
+
+        if projections is not None:
+            for space, point in projections.items():
+                self.add_projection(space, point)
+
+    def __repr__(self) -> str:
+        label = (
+            f' "{self.label}"'
+            if self.label is not None
+            else ''
+        )
+
+        return f'<ConceptEntity{label} "{self.entity_id}" with {len(self)} projections>'
+
+    def __len__(self) -> int:
+        return len(self._projections)
+
+    @property
+    def projections(self) -> dict[str, ConceptPoint]:
+        """
+        Conceptual projections indexed by space key
+        """
+
+        return self._projections
+
+    @property
+    def available_spaces(self) -> list[str]:
+        """
+        Names of conceptual spaces into which this entity is projected
+        """
+
+        return list(self._projections)
+
+    def add_projection(self, space: str, point: ConceptPoint) -> None:
+        """
+        Add or replace a conceptual-space projection
+
+        :param space: Conceptual space key
+        :param point: Conceptual point representing the entity in that space
+        """
+
+        if not space:
+            raise ValueError
+
+        self._projections[space] = point
+
+    def has_projection(self, space: str) -> bool:
+        """
+        Check whether this entity has a projection into a conceptual space
+
+        :param space: Conceptual space key
+        :return: Whether a projection for the requested space is available
+        """
+
+        return space in self._projections
+
+    def projection(self, space: str) -> ConceptPoint:
+        """
+        Return a conceptual-space projection
+
+        :param space: Conceptual space key
+        :return: Conceptual point representing the entity in the requested space
+        """
+
+        if space not in self._projections:
+            raise KeyError
+
+        return self._projections[space]
+
+    def shared_spaces(
+            self,
+            other: ConceptEntity,
+            required_spaces: list[str] | None = None
+    ) -> list[str]:
+        """
+        Find conceptual spaces shared with another entity
+
+        :param other: Entity to compare with
+        :param required_spaces: Optional spaces that must be available in both entities
+        :return: Space keys available in both entities
+        """
+
+        shared = [
+            space
+            for space in self.available_spaces
+            if other.has_projection(space)
+        ]
+
+        if required_spaces is None:
+            return shared
+
+        missing = [
+            space
+            for space in required_spaces
+            if space not in shared
+        ]
+        if missing:
+            raise ValueError
+
+        return shared
+
+    def distance(
+            self,
+            other: ConceptEntity,
+            spaces: dict[str, ConceptSpace],
+            space_weights: dict[str, float] | None = None,
+            required_spaces: list[str] | None = None,
+            space_domain_weights: dict[str, dict[str, float]] | None = None,
+            normalize: bool = True
+    ) -> float:
+        """
+        Calculate distance to another conceptual entity
+
+        :param other: Entity to compare with
+        :param spaces: Conceptual spaces indexed by space key
+        :param space_weights: Optional weights for conceptual-space distances
+        :param required_spaces: Optional spaces that must be available in both entities
+        :param space_domain_weights: Optional per-space weights for internal domain distances
+        :param normalize: Whether to normalize distances inside each conceptual space
+        :return: Weighted average distance over comparable spaces
+        """
+
+        space_weights = space_weights or {}
+        space_domain_weights = space_domain_weights or {}
+        shared = self.shared_spaces(other, required_spaces)
+
+        total = 0.0
+        used_weight = 0.0
+
+        for space in shared:
+            if space not in spaces:
+                raise KeyError
+
+            weight = space_weights.get(space, 1.0)
+
+            if weight < 0:
+                raise ValueError
+
+            if weight == 0:
+                continue
+
+            total += weight * spaces[space].distance(
+                a=self.projection(space),
+                b=other.projection(space),
+                domain_weights=space_domain_weights.get(space),
+                normalize=normalize
+            )
+            used_weight += weight
+
+        if used_weight == 0:
+            raise ValueError
+
+        return float(total / used_weight)
+
+
+class ConceptEntityMemory:
+    """
+    Memory storing conceptual entities with projections into named spaces
+    """
+
+    def __init__(self, spaces: dict[str, ConceptSpace]) -> None:
+        """
+        Initialize an empty conceptual entity memory
+
+        :param spaces: Conceptual spaces indexed by space key
+        """
+
+        if not spaces:
+            raise ValueError
+
+        self.spaces: dict[str, ConceptSpace] = spaces
+        self._entities: list[ConceptEntity] = []
+
+    def __repr__(self) -> str:
+        return f'<ConceptEntityMemory with {len(self)} entities and {len(self.spaces)} spaces>'
+
+    def __len__(self) -> int:
+        return len(self._entities)
+
+    def __iter__(self) -> Iterator[ConceptEntity]:
+        yield from self._entities
+
+    @property
+    def entities(self) -> list[ConceptEntity]:
+        """
+        All conceptual entities stored in this memory
+        """
+
+        return self._entities
+
+    def validate(self, entity: ConceptEntity) -> None:
+        """
+        Validate whether an entity belongs to this memory
+
+        :param entity: Conceptual entity to validate
+        """
+
+        for space, point in entity.projections.items():
+            if space not in self.spaces:
+                raise KeyError
+
+            self.spaces[space].validate(point)
+
+    def add(self, entity: ConceptEntity) -> None:
+        """
+        Store a conceptual entity
+
+        :param entity: Conceptual entity to store
+        """
+
+        self.validate(entity)
+        self._entities.append(entity)
+
+    def extend(self, entities: list[ConceptEntity]) -> None:
+        """
+        Store multiple conceptual entities
+
+        :param entities: Conceptual entities to store
+        """
+
+        for entity in entities:
+            self.add(entity)
+
+    def distance(
+            self,
+            a: ConceptEntity,
+            b: ConceptEntity,
+            space_weights: dict[str, float] | None = None,
+            required_spaces: list[str] | None = None,
+            space_domain_weights: dict[str, dict[str, float]] | None = None,
+            normalize: bool = True
+    ) -> float:
+        """
+        Calculate distance between two stored-compatible entities
+
+        :param a: First conceptual entity
+        :param b: Second conceptual entity
+        :param space_weights: Optional weights for conceptual-space distances
+        :param required_spaces: Optional spaces that must be available in both entities
+        :param space_domain_weights: Optional per-space weights for internal domain distances
+        :param normalize: Whether to normalize distances inside each conceptual space
+        :return: Weighted average distance over comparable spaces
+        """
+
+        self.validate(a)
+        self.validate(b)
+
+        return a.distance(
+            other=b,
+            spaces=self.spaces,
+            space_weights=space_weights,
+            required_spaces=required_spaces,
+            space_domain_weights=space_domain_weights,
+            normalize=normalize
+        )
+
+    def nearest(
+            self,
+            query: ConceptEntity,
+            k: int = 1,
+            space_weights: dict[str, float] | None = None,
+            required_spaces: list[str] | None = None,
+            space_domain_weights: dict[str, dict[str, float]] | None = None
+    ) -> list[tuple[ConceptEntity, float]]:
+        """
+        Find nearest stored entities over comparable spaces
+
+        :param query: Conceptual entity to find the neighbors for
+        :param k: Number of nearest neighbors to return
+        :param space_weights: Optional weights for conceptual-space distances
+        :param required_spaces: Optional spaces that must be available in both entities
+        :param space_domain_weights: Optional per-space weights for internal domain distances
+        :return: Nearest conceptual entities together with their distances
+        """
+
+        if k <= 0:
+            raise ValueError
+
+        self.validate(query)
+        distances = []
+
+        for entity in self._entities:
+            try:
+                distance = self.distance(
+                    a=query, b=entity,
+                    space_weights=space_weights,
+                    required_spaces=required_spaces,
+                    space_domain_weights=space_domain_weights
+                )
+            except ValueError:
+                continue
+
+            distances.append((entity, distance))
+
+        distances.sort(key=lambda item: item[1])
+        return distances[:k]
+
+    @classmethod
+    def from_entities(
+            cls,
+            spaces: dict[str, ConceptSpace],
+            entities: list[ConceptEntity]
+    ) -> ConceptEntityMemory:
+        """
+        Initialize conceptual entity memory from entities
+
+        :param spaces: Conceptual spaces indexed by space key
+        :param entities: Conceptual entities to store
+        :return: Conceptual entity memory initialized from the entities
+        """
+
+        memory = cls(spaces)
+        memory.extend(entities)
+
+        return memory
+
+    @classmethod
+    def from_space_memories(
+            cls,
+            memories: dict[str, ConceptMemory],
+            key_fn: Callable[[str, ConceptPoint], str],
+            label_fn: Callable[[str, ConceptPoint], str | None] | None = None,
+            metadata_fn: Callable[[str, ConceptPoint], dict[str, Any]] | None = None
+    ) -> ConceptEntityMemory:
+        """
+        Initialize entity memory by aligning space-specific memories
+
+        :param memories: Conceptual memories indexed by space key
+        :param key_fn: Function mapping `(space_key, point)` to a stable entity id
+        :param label_fn: Optional function mapping `(space_key, point)` to an entity label
+        :param metadata_fn: Optional function mapping `(space_key, point)` to entity metadata
+        :return: Conceptual entity memory initialized from space memories
+        """
+
+        if not memories:
+            raise ValueError
+
+        spaces: dict[str, ConceptSpace] = {
+            space: memory.space
+            for space, memory in memories.items()
+        }
+        projections_by_id: dict[str, dict[str, ConceptPoint]] = {}
+        labels_by_id: dict[str, str | None] = {}
+        metadata_by_id: dict[str, dict[str, Any]] = {}
+
+        for space, memory in memories.items():
+            if not space:
+                raise ValueError
+
+            for point in memory:
+                entity_id = key_fn(space, point)
+                if not entity_id:
+                    raise ValueError
+
+                projections = projections_by_id.setdefault(entity_id, {})
+                if space in projections:
+                    raise ValueError
+
+                projections[space] = point
+
+                label = (
+                    label_fn(space, point)
+                    if label_fn is not None
+                    else point.label
+                )
+                if entity_id not in labels_by_id or labels_by_id[entity_id] is None:
+                    labels_by_id[entity_id] = label
+
+                if metadata_fn is not None:
+                    metadata = metadata_fn(space, point)
+                    metadata_by_id.setdefault(entity_id, {}).update(metadata)
+
+        entities = [
+            ConceptEntity(
+                entity_id=entity_id,
+                projections=projections_by_id[entity_id],
+                label=labels_by_id.get(entity_id),
+                metadata=metadata_by_id.get(entity_id)
+            )
+            for entity_id in sorted(projections_by_id)
+        ]
+
+        return cls.from_entities(spaces, entities)

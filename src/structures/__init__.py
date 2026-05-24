@@ -1,6 +1,8 @@
 from .camera import Intrinsics, Stream, Streams
 from .concept import (
     ConceptDomain,
+    ConceptEntity,
+    ConceptEntityMemory,
     ConceptMemory,
     ConceptPoint,
     ConceptPrototype,
