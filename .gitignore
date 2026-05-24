@@ -191,3 +191,11 @@ models/
 *.npz
 *.h5
 *.zip
+
+# Experiments
+experiments/misc
+experiments/segmented_imgs
+experiments/test_imgs
+experiments/test_scenes
+experiments/test_videos
+experiments/trajectory_exports/*/
